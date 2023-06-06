@@ -480,6 +480,7 @@ static int libc_open ( dvdcss_t dvdcss, const char *psz_device )
 #if defined( _WIN32 )
 static int win2k_open ( dvdcss_t dvdcss, const char *psz_device )
 {
+    HANDLE h_fd;
     WCHAR psz_dvd[7] = L"\\\\.\\\0:";
     psz_dvd[4] = psz_device[0];
 
@@ -491,24 +492,25 @@ static int win2k_open ( dvdcss_t dvdcss, const char *psz_device )
      * won't send back the right result).
      * (See Microsoft Q241374: Read and Write Access Required for SCSI
      * Pass Through Requests) */
-    dvdcss->i_fd = (int)
+    h_fd =
                 CreateFileW( psz_dvd, GENERIC_READ | GENERIC_WRITE,
                             FILE_SHARE_READ | FILE_SHARE_WRITE,
                             NULL, OPEN_EXISTING,
                             FILE_FLAG_RANDOM_ACCESS, NULL );
 
-    if( (HANDLE) dvdcss->i_fd == INVALID_HANDLE_VALUE )
-        dvdcss->i_fd = (int)
+    if( h_fd == INVALID_HANDLE_VALUE )
+        h_fd =
                     CreateFileW( psz_dvd, GENERIC_READ, FILE_SHARE_READ,
                                 NULL, OPEN_EXISTING,
                                 FILE_FLAG_RANDOM_ACCESS, NULL );
 
-    if( (HANDLE) dvdcss->i_fd == INVALID_HANDLE_VALUE )
+    if( h_fd == INVALID_HANDLE_VALUE )
     {
         print_error( dvdcss, "failed to open device %s", psz_device );
         return -1;
     }
 
+    dvdcss->i_fd = (int) h_fd;
     dvdcss->i_pos = 0;
 
     return 0;
