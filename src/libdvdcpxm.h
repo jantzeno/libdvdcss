@@ -51,30 +51,36 @@
 #include "dvdcss/dvdcss.h"
 #include "dvdcss/dvdcpxm.h"
 
-typedef struct {
-	uint8_t  col;
-	uint16_t row;
-	uint64_t key;
+typedef struct
+{
+    uint8_t  col;
+    uint16_t row;
+    uint64_t key;
 } device_key_t;
 
-typedef struct {
-	struct {
-		uint8_t type:4;
-		uint8_t reserved:4;
-		uint8_t manufacturer_id[2];
-		uint8_t serial_number[5];
-	} id_media;
-	uint8_t dvd_mac[10];
+typedef struct
+{
+    struct 
+    {
+        uint8_t type:4;
+        uint8_t reserved:4;
+        uint8_t manufacturer_id[2];
+        uint8_t serial_number[5];
+    } id_media;
+
+    uint8_t dvd_mac[10];
 } cprm_media_id_t;
 
-typedef struct {
-	uint8_t mkb_hash[8];
-	uint8_t reserved[8];
+typedef struct
+{
+    uint8_t mkb_hash[8];
+    uint8_t reserved[8];
 } cprm_mkb_desc_t;
 
-typedef struct {
-	cprm_mkb_desc_t mkb_desc;
-	uint8_t		 mkb[CPRM_MKB_SIZE];
+typedef struct 
+{
+    cprm_mkb_desc_t mkb_desc;
+    uint8_t         mkb[CPRM_MKB_SIZE];
 } cprm_mkb_t;
 
 #endif
