@@ -1,7 +1,7 @@
 dnl library version number
 m4_define([dvdcss_major], 1)
-m4_define([dvdcss_minor], 4)
-m4_define([dvdcss_micro], 3)
+m4_define([dvdcss_minor], 5)
+m4_define([dvdcss_micro], 0)
 m4_define([dvdcss_version],[dvdcss_major.dvdcss_minor.dvdcss_micro])
 
 AC_INIT(libdvdcss, dvdcss_version, , , https://www.videolan.org/developers/libdvdcss.html)
@@ -45,8 +45,8 @@ dnl    are platform dependent
 dnl  * in Linux, the library will be named
 dnl    libname.so.(DVDCSS_LT_CURRENT - DVDCSS_LT_AGE).DVDCSS_LT_AGE.DVDCSS_LT_REVISION
 
-DVDCSS_LT_CURRENT=4
-DVDCSS_LT_AGE=2
+DVDCSS_LT_CURRENT=5
+DVDCSS_LT_AGE=3
 DVDCSS_LT_REVISION=0
 
 AC_SUBST([DVDCSS_LTVERSION], [$DVDCSS_LT_CURRENT:$DVDCSS_LT_REVISION:$DVDCSS_LT_AGE])

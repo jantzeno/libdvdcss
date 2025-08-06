@@ -1,18 +1,56 @@
+/**
+ * \file libdvdcpxm.c
+ * \author Maxim V.Anisiutkin <Maxim.Anisiutkin@gmail.com>
+ * \author Saifelden Ismail <saifeldenmi@gmail.com>
+ *
+ * \brief Integration of libdvdcpxm functionality into libdvdcss.
+ *
+ * This file adapts core logic from libdvdcpxm for use in libdvdcss, allowing
+ * improved support for CPPM-protected DVD-Audio discs.
+ */
+
+/*
+ * Copyright (C) 1999-2025 VideoLAN
+ * Copyright (C) Maxim V.Anisiutkin <Maxim.Anisiutkin@gmail.com>
+ * Copyright (C) 2025 Saifelden Ismail <saifeldenmi@gmail.com>
+ *
+ * This file is part of libdvdcss.
+ *
+ * libdvdcss is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * libdvdcss is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with libdvdcss; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include "config.h"
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "dvd_command.h"
-#include "dvd_css.h"
-#include "dvdcpxm.h"
+#include "cpxm.h"
+#include "dvdcss/dvdcpxm.h"
+#include "ioctl.h"
+#include "device.h"
+#include "bswap.h"
 #include "libdvdcpxm.h"
+#include "libdvdcss.h"
 
-int media_type = 0;
-uint64_t media_key = 0;
+#define IS_SYNC_CODE(word) \
+		( (word)[0] == 0x00 && (word)[1] == 0x00 && (word)[2] == 0x01 && (word)[3] == 0xBA )
 
-uint64_t id_album = 0;
-uint64_t id_media = 0;
-uint64_t vr_k_te  = 0;
-
+/* these values are used by libdvdcpxm to process the Media Key Block */
+/* They are present inside DVD-Audio players and are used in conjunction with keys taken from the disc in order to generate the final media_key used by the C2 Cypher */
 uint32_t sbox_f[256];
 
 static uint8_t sbox[256] = {
@@ -107,52 +145,18 @@ static device_key_t cprm_device_keys[] =
 	{0x0f, 0x08fc, 0xd28ce525a2be4b},
 };
 
-int ioctl_ReadCPRMMediaId(int *p_agid, uint8_t *p_buffer)
-{
-	int i_bytes;
-	int i_ret;
-
-	ioctl_Init(GPCMD_READ_DISC_STRUCTURE, CPRM_MEDIA_ID_SIZE + 4);
-	sptd.Cdb[7]  = CPRM_STRUCT_MEDIA_ID;
-	sptd.Cdb[10] = *p_agid << 6;
-	i_ret = ioctl_Send(&i_bytes); 
-	if (i_ret == 0)
-		memcpy(p_buffer, sptd_buf + 4, CPRM_MEDIA_ID_SIZE);
-	return i_ret;
-}
-
-int ioctl_ReadCPRMMKBPack(int *p_agid, int mkb_pack, uint8_t *p_mkb_pack, int *p_total_packs)
-{
-	int i_bytes;
-	int i_ret;
-
-	ioctl_Init(GPCMD_READ_DISC_STRUCTURE, CPRM_MKB_PACK_SIZE + 4);
-	sptd.Cdb[2]  = ((uint8_t*)&mkb_pack)[3];
-	sptd.Cdb[3]  = ((uint8_t*)&mkb_pack)[2];
-	sptd.Cdb[4]  = ((uint8_t*)&mkb_pack)[1];
-	sptd.Cdb[5]  = ((uint8_t*)&mkb_pack)[0];
-	sptd.Cdb[7]  = CPRM_STRUCT_MKB;
-	sptd.Cdb[10] = *p_agid << 6;
-	i_ret = ioctl_Send(&i_bytes); 
-	if (i_ret == 0)
-	{
-		*p_total_packs = sptd_buf[3];
-		memcpy(p_mkb_pack, sptd_buf + 4, CPRM_MKB_PACK_SIZE);
-	}
-	return i_ret;
-}
-
-static uint32_t rol32(uint32_t code, int n)
+/* Functions Used by the C2 Cypher */
+static inline uint32_t rol32(uint32_t code, int n)
 {
 	return (code << n) | (code >> (32 - n));
 }
 
-static uint8_t rol8(uint8_t code, int n)
+static inline uint8_t rol8(uint8_t code, int n)
 {
 	return (code << n) | (code >> (8 - n));
 }
 
-static uint32_t F(uint32_t code, uint32_t key)
+static inline uint32_t F(uint32_t code, uint32_t key)
 {
 	uint32_t work;
 
@@ -165,7 +169,7 @@ static uint32_t F(uint32_t code, uint32_t key)
 void c2_init()
 {
 	int i;
-	unsigned char c0, c1, c2, c3;
+	unsigned c0, c1, c2, c3;
 	
 	for (i = 0; i < 256; i++)
 	{
@@ -178,33 +182,35 @@ void c2_init()
 	}
 }
 
-uint64_t c2_enc(uint64_t code, uint64_t key)
+uint64_t c2_enc( uint64_t code, uint64_t key )
 {
 	uint32_t L, R, t;
 	uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
 	uint32_t sk[10];
-	int      round;
+	int	  round;
 
-	L     = (uint32_t)((code >> 32) & 0xffffffff);
-	R     = (uint32_t)((code      ) & 0xffffffff);
+	L	 = (uint32_t)((code >> 32) & 0xffffffff);
+	R	 = (uint32_t)((code	  ) & 0xffffffff);
 	ktmpa = (uint32_t)((key  >> 32) & 0x00ffffff);
-	ktmpb = (uint32_t)((key       ) & 0xffffffff);
+	ktmpb = (uint32_t)((key	   ) & 0xffffffff);
+
 	for (round = 0; round < 10; round++)
 	{
 		ktmpa &= 0x00ffffff;
-		sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+		sk[round] = ktmpb + ((uint32_t) sbox[(ktmpa & 0xff) ^ round] << 4);
 		ktmpc = (ktmpb >> (32 - 17));
 		ktmpd = (ktmpa >> (24 - 17));
 		ktmpa = (ktmpa << 17) | ktmpc;
 		ktmpb = (ktmpb << 17) | ktmpd;
 	}
+
 	for (round = 0; round < 10; round++)
 	{
-		L += F(R, sk[round]);
+		L += F( R, sk[round] );
 		t = L; L = R; R = t;
 	}
 	t = L; L = R; R = t;
-	return (((uint64_t)L) << 32) | R;
+	return (((uint64_t) L) << 32) | R;
 }
 
 uint64_t c2_dec(uint64_t code, uint64_t key)
@@ -218,20 +224,23 @@ uint64_t c2_dec(uint64_t code, uint64_t key)
 	R  =    (uint32_t)((code      ) & 0xffffffff);
 	ktmpa = (uint32_t)((key  >> 32) & 0x00ffffff);
 	ktmpb = (uint32_t)((key       ) & 0xffffffff);
+
 	for (round = 0; round < 10; round++)
 	{
 		ktmpa &= 0x00ffffff;
-		sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+		sk[round] = ktmpb + ((uint32_t) sbox[(ktmpa & 0xff) ^ round] << 4);
 		ktmpc = (ktmpb >> (32 - 17));
 		ktmpd = (ktmpa >> (24 - 17));
 		ktmpa = (ktmpa << 17) | ktmpc;
 		ktmpb = (ktmpb << 17) | ktmpd;
 	}
+
 	for (round = 9; round >= 0; round--)
 	{
 		L -= F(R, sk[round]);
 		t = L; L = R; R = t;
 	}
+
 	t = L; L = R; R = t;
 	return (((uint64_t)L) << 32) | R;
 }
@@ -247,18 +256,19 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length)
 	uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
 	uint32_t sk[10];
 	uint64_t inout, inkey;
-	int      round, key_round, i;
+	int	  round, key_round, i;
 
 	inkey = key;
 	key_round = 10;
+
 	for (i = 0; i < length; i += 8)
 	{
-		inout = *(uint64_t*)p_buffer;
-		B2N_64(inout);
+		READ64_BE(inout, p_buffer);
 		L  =    (uint32_t)((inout >> 32) & 0xffffffff);
 		R  =    (uint32_t)((inout      ) & 0xffffffff);
 		ktmpa = (uint32_t)((inkey >> 32) & 0x00ffffff);
 		ktmpb = (uint32_t)((inkey      ) & 0xffffffff);
+
 		for (round = 0; round < key_round; round++)
 		{
 			ktmpa &= 0x00ffffff;
@@ -268,19 +278,23 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length)
 			ktmpa = (ktmpa << 17) | ktmpc;
 			ktmpb = (ktmpb << 17) | ktmpd;
 		}
+
 		for (round = 0; round < 10; round++)
 		{
 			L += F(R, sk[round % key_round]);
-			if (round == 4)
+
+			if ( round == 4 )
 			{
 				inkey = key ^ (((uint64_t)(R & 0x00ffffff) << 32) | L);
 			}
 			t = L; L = R; R = t;
 		}
+
 		t = L; L = R; R = t;
 		inout = (((uint64_t)L) << 32) | R;
 		B2N_64(inout);
-		*((uint64_t*)p_buffer)++ = inout;
+		memcpy(p_buffer, &inout, sizeof(inout));
+		p_buffer = (uint8_t*)p_buffer + 8;
 		key_round = 2;
 	}
 }
@@ -292,17 +306,20 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length)
 	uint32_t sk[10];
 	uint64_t inout, inkey;
 	int      round, key_round, i;
+	uint8_t *buf = (uint8_t*)p_buffer;
 
 	inkey = key;
 	key_round = 10;
+
 	for (i = 0; i < length; i += 8)
 	{
-		inout = *(uint64_t*)p_buffer;
-		B2N_64(inout);
+		READ64_BE(inout, buf);
+
 		L  =    (uint32_t)((inout >> 32) & 0xffffffff);
 		R  =    (uint32_t)((inout      ) & 0xffffffff);
 		ktmpa = (uint32_t)((inkey >> 32) & 0x00ffffff);
 		ktmpb = (uint32_t)((inkey      ) & 0xffffffff);
+
 		for (round = 0; round < key_round; round++)
 		{
 			ktmpa &= 0x00ffffff;
@@ -312,152 +329,104 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length)
 			ktmpa = (ktmpa << 17) | ktmpc;
 			ktmpb = (ktmpb << 17) | ktmpd;
 		}
+
 		for (round = 9; round >= 0; round--)
 		{
 			L -= F(R, sk[round % key_round]);
 			t = L; L = R; R = t;
+
 			if (round == 5)
 			{
-				inkey = key ^ (((uint64_t)(R & 0x00ffffff) << 32) | L);
+				inkey = key ^ (((uint64_t) (R & 0x00ffffff) << 32) | L);
 			}
 		}
+
 		t = L; L = R; R = t;
 		inout = (((uint64_t)L) << 32) | R;
-		B2N_64(inout);
-		*((uint64_t*)p_buffer)++ = inout;
+		B2N_64( inout );
+		memcpy( buf, &inout, sizeof( uint64_t ) );
+
+		buf += 8;
 		key_round = 2;
 	}
 }
 
-uint8_t *cppm_get_mkb(char *psz_mkb)
-{
-	FILE    *f_mkb;
-	uint8_t *p_mkb = NULL;
-	char    mkb_signature[12];
-	size_t  mkb_size;
-
-	f_mkb = fopen(psz_mkb, "rb");
-	if (!f_mkb)
-		return NULL;
-	if (fread(mkb_signature, 1, 12, f_mkb) == 12)
-	{
-		if (memcmp(mkb_signature, "DVDAUDIO.MKB", 12) == 0)
-		{
-			if (fread(&mkb_size, 1, 4, f_mkb) == 4)
-			{
-				B2N_32(mkb_size);
-				p_mkb = malloc(mkb_size);
-				if (p_mkb)
-				{
-					if (fread(p_mkb, 1, mkb_size, f_mkb) != mkb_size)
-					{
-						free(p_mkb);
-						p_mkb = NULL;
-					}
-				}
-			}
-		}
-	}
-	fclose(f_mkb);
-	return p_mkb;
-}
-
-uint8_t *cprm_get_mkb(void)
+/* for CPPM, libdvdread is responsible for retrieving the Media Key Block */
+uint8_t *cprm_get_mkb( dvdcss_t dvdcss )
 {
 	uint8_t mkb_pack[CPRM_MKB_PACK_SIZE];
 	uint8_t *p_mkb = NULL;
 	int mkb_packs, i;
-
 	mkb_packs = 16;
-	if (ioctl_ReadCPRMMKBPack(&css.agid, 0, (uint8_t*)mkb_pack, &mkb_packs))
+
+	if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd, &dvdcss->css.i_agid, 0, (uint8_t *) mkb_pack, &mkb_packs))
 		return NULL;
+
 	p_mkb = malloc(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
+
 	if (!p_mkb)
 		return NULL;
+
 	memcpy(p_mkb, &mkb_pack[16], CPRM_MKB_PACK_SIZE - 16);
+
 	for (i = 1; i < mkb_packs; i++)
 	{
-		if (ioctl_ReadCPRMMKBPack(&css.agid, i, (uint8_t*)p_mkb + i * CPRM_MKB_PACK_SIZE - 16, &mkb_packs)) {
+		if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd,&dvdcss->css.i_agid, i, (uint8_t*)p_mkb + i * CPRM_MKB_PACK_SIZE - 16, &mkb_packs))
+		{
 			free(p_mkb);
 			p_mkb = NULL;
 			break;
 		}
 	}
+
 	return p_mkb;
-}
-
-int cppm_set_id_album(void)
-{
-	uint8_t p_buffer[DVD_DISCKEY_SIZE];
-	int i;
-
-	id_album = 0;
-	if (GetBusKey())
-		return -1;
-	if (ioctl_ReadDiscKey(&css.agid, p_buffer))
-		return -1;
-	if (GetASF() != 1)
-	{
-		ioctl_InvalidateAgid(&css.agid);
-		return -1;
-	}
-	for (i = 0; i < DVD_DISCKEY_SIZE; i++)
-		p_buffer[i] ^= css.p_bus_key[4 - (i % KEY_SIZE)];
-	id_album = *(uint64_t*)&p_buffer[80];
-	B2N_64(id_album);
-	return 0;
-}
-
-int cprm_set_id_media(void)
-{
-	uint8_t p_buffer[CPRM_MEDIA_ID_SIZE + 4];
-
-	id_media = 0;
-	if (GetBusKey())
-		return -1;
-	/* Get CPRM IDmedia and DVD-MAC(IDmedia) keys */
-	if (ioctl_ReadCPRMMediaId(&css.agid, p_buffer))
-		return -1;
-	id_media = *(uint64_t*)&(((cprm_media_id_t*)p_buffer)->id_media);
-	B2N_64(id_media);
-	return 0;
 }
 
 #define f(c, r) (((uint64_t)c << 32) | (uint64_t)r)
 
+/* this function retrieves the main key used to decryption, this key is derived from applying the C2 cypher to the MKB
+ * and the DVD-Audio player device keys, as well as a unique album_id and media_id */
 int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint64_t *p_media_key)
 {
 	int mkb_pos, length, i, i_dev_key, no_more_keys, no_more_records;
 	uint8_t record_type, column;
 	uint64_t buffer, media_key, verification_data;
-
 	i_dev_key = 0;
 	no_more_keys = 0;
-	while (!no_more_keys)
+
+	while ( !no_more_keys )
 	{
-		mkb_pos = 0;
+		/* skip the file identifier and the length */
+		mkb_pos = 16;
 		no_more_records = 0;
 		while (!no_more_records)
 		{
 			record_type = *(uint8_t*)&p_mkb[mkb_pos];
-			length = *(uint32_t*)&p_mkb[mkb_pos] & 0xffffff00;
-			B2N_32(length);
+			memcpy( &length, &p_mkb[mkb_pos], sizeof( length ) );
+			length &= 0xffffff00;
+			B2N_32( length );
+
 			if (length >= 12)
 			{
-				buffer = *(uint64_t*)&p_mkb[mkb_pos + 4];
+				memcpy( &buffer, &p_mkb[mkb_pos + 4], sizeof( buffer ) );
 			}
 			else
 			{
 				if (length < 4)
 					length = 4;
 			}
-			switch (record_type) {
+
+			switch ( record_type )
+			{
 			case 0x82: /* Conditionally calculate media key record */
 				B2N_64(buffer);
 				buffer = c2_dec(buffer, media_key);
+
 				if ((buffer & 0xffffffff00000000) != 0xdeadbeef00000000)
 					break;
+
 				B2N_64(buffer);
+				/* intentional fallthrough */
 			case 0x01: /* Calculate media key record */
 				column = ((uint8_t*)&buffer)[4];
 				/*
@@ -466,7 +435,7 @@ int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint6
 				*/
 				/* Get appropriate device key for column */
 				no_more_keys = 1;
-				for (i = i_dev_key; i < nr_dev_keys; i++)	
+				for (i = i_dev_key; i < nr_dev_keys; i++)
 				{
 					if (p_dev_keys[i].col == column)
 					{
@@ -479,23 +448,27 @@ int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint6
 					break;
 				if (12 + p_dev_keys[i_dev_key].row * 8 + 8 > length)
 					break;
-				buffer = *(uint64_t*)&p_mkb[mkb_pos + 12 + p_dev_keys[i_dev_key].row * 8];
-				B2N_64(buffer);
+				memcpy(&buffer, &p_mkb[mkb_pos + 12 + p_dev_keys[i_dev_key].row * 8], sizeof(buffer));
+				B2N_64( buffer );
+
 				if (record_type == 0x82)
 					buffer = c2_dec(buffer, media_key);
-				media_key = c2_dec(buffer, p_dev_keys[i_dev_key].key) & 0x00ffffffffffffff ^ f(column, p_dev_keys[i_dev_key].row);
+
+				media_key = (c2_dec(buffer, p_dev_keys[i_dev_key].key) & 0x00ffffffffffffff) ^ f(column, p_dev_keys[i_dev_key].row);
 				buffer = c2_dec(verification_data, media_key);
+
 				if ((buffer & 0xffffffff00000000) == 0xdeadbeef00000000)
 				{
 					*p_media_key = media_key;
 					return 0;
 				}
+
 				break;
 			case 0x02: /* End of media key record */
 				no_more_records = 1;
 				break;
 			case 0x81: /* Verify media key record */
-				B2N_64(buffer);
+				B2N_64( buffer );
 				verification_data = buffer;
 				break;
 			default:
@@ -508,110 +481,91 @@ int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint6
 	return -1;
 }
 
-int vr_get_k_te(char *psz_vr_mangr)
+int vr_get_k_te(cpxm cpxm,char *psz_vr_mangr)
 {
-	FILE    *f_vr_m;
+	FILE	*f_vr_m;
 	uint8_t vmgi_mat[512];
 	int ret = -1;
 
 	f_vr_m = fopen(psz_vr_mangr, "rb");
+
 	if (!f_vr_m)
 		return -1;
+
 	if (fread(vmgi_mat, 1, 512, f_vr_m) == 512)
 	{
-		if (memcmp(vmgi_mat, "DVD_RTR_VMG0", 12) == 0)
+		if (memcmp( vmgi_mat, "DVD_RTR_VMG0", 12 ) == 0)
 		{
-			vr_k_te = 0;
+			cpxm.vr_k_te = 0;
 			if (vmgi_mat[267] & 1) /* Check encrypted title key status bit */
 			{
-				vr_k_te = *(uint64_t*)&vmgi_mat[268]; /* Get Kte */
-				B2N_64(vr_k_te);
+				memcpy(&cpxm.vr_k_te, &vmgi_mat[268], sizeof(cpxm.vr_k_te));
+				B2N_64(cpxm.vr_k_te);
 			}
 			ret = 0;
 		}
 	}
+
 	fclose(f_vr_m);
 	return ret;
 }
 
-int dvdcpxm_init(char *psz_target)
+/* function should be called on a dvdcss var to set cppm struct which needs to persist in order to decrypt the media */
+LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_mkb)
 {
-	char psz_dvddev[8];
-	DVD_COPYRIGHT_DESCRIPTOR copyright;
-	char psz_file[MAX_PATH];
-	uint8_t *p_mkb;
+	/* in the case that p_mkb is received as null, then either you were unable to read the mkb or the encryption type is cprm */
+	char psz_file[PATH_MAX];
 	int ret = -1;
-	
-	strcpy(psz_dvddev, "\\\\.\\?:");
-	psz_dvddev[4] = psz_target[0];
-	h_dvd = dvddev_open(psz_dvddev);
-	if (h_dvd == INVALID_HANDLE_VALUE)
-		return -1;
-	if (ioctl_ReadCopyright(0, &copyright) < 0)
-	{
-		dvddev_close(h_dvd);
-		return -1;
-	}
+
 	c2_init();
-	media_type = copyright.CopyrightProtectionType;
-	switch (copyright.CopyrightProtectionType)
+	switch ( dvdcss->media_type )
 	{
 	case COPYRIGHT_PROTECTION_NONE:
 		ret = 0;
 		break;
 	case COPYRIGHT_PROTECTION_CPPM:
-		if (cppm_set_id_album() == 0)
+		if (cppm_set_id_album(dvdcss) == 0)
 		{
-			strcpy(psz_file, "?:\\AUDIO_TS\\DVDAUDIO.MKB");
-			psz_file[0] = psz_target[0];
-			p_mkb = cppm_get_mkb(psz_file);
-			if (!p_mkb)
-			{
-				strcpy(psz_file, "?:\\AUDIO_TS\\DVDAUDIO.BUP");
-				psz_file[0] = psz_target[0];
-				p_mkb = cppm_get_mkb(psz_file);
-			}
 			if (p_mkb)
 			{
-				ret = process_mkb(p_mkb, cppm_device_keys, sizeof(cppm_device_keys) / sizeof(*cppm_device_keys), &media_key);
+				ret = process_mkb(p_mkb, cppm_device_keys, sizeof(cppm_device_keys) / sizeof(*cppm_device_keys), &dvdcss->cpxm.media_key);
 				free(p_mkb);
 				if (ret) break;
 			}
 		}
 		break;
 	case COPYRIGHT_PROTECTION_CPRM:
-		if (cprm_set_id_media() == 0)
+		if ( cprm_set_id_media(dvdcss) == 0 )
 		{
-			p_mkb = cprm_get_mkb();
+			p_mkb = cprm_get_mkb(dvdcss);
 			if (p_mkb)
 			{
-				ret = process_mkb(p_mkb, cprm_device_keys, sizeof(cprm_device_keys) / sizeof(*cprm_device_keys), &media_key);
-				free(p_mkb);
+				ret = process_mkb( p_mkb, cprm_device_keys, sizeof( cprm_device_keys ) / sizeof( *cprm_device_keys ), &dvdcss->cpxm.media_key );
+				free( p_mkb );
 				if (ret) break;
 			}
-			strcpy(psz_file, "?:\\DVD_RTAV\\VR_MANGR.IFO");
-			psz_file[0] = psz_target[0];
-			ret = vr_get_k_te(psz_file);
+			snprintf(psz_file, PATH_MAX, "%s/DVD_RTAV/VR_MANGR.IFO", dvdcss->psz_device);
+			ret = vr_get_k_te( dvdcss->cpxm,psz_file );
+
 			if (ret)
 			{
-				strcpy(psz_file, "?:\\DVD_RTAV\\VR_MANGR.BUP");
-				psz_file[0] = psz_target[0];
-				ret = vr_get_k_te(psz_file);
+				snprintf(psz_file, PATH_MAX, "%s/DVD_RTAV/VR_MANGR.BUP", dvdcss->psz_device);
+				ret = vr_get_k_te(dvdcss->cpxm,psz_file);
 				if (ret) break;
 			}
 		}
 		break;
 	}
-	dvddev_close(h_dvd);
-	return media_type;
+	return dvdcss->media_type;
 }
 
+/* makes sure that the block is encrypted */
 int mpeg2_check_pes_scrambling_control(uint8_t *p_block)
 {
 	int pes_scrambling_control;
 
 	pes_scrambling_control = 0;
-	if (*(uint32_t*)p_block == 0xba010000)
+	if (IS_SYNC_CODE(p_block))
 	{
 		pes_scrambling_control = (p_block[20] & 0x30) >> 4;
 	}
@@ -620,7 +574,7 @@ int mpeg2_check_pes_scrambling_control(uint8_t *p_block)
 
 void mpeg2_reset_pes_scrambling_control(uint8_t *p_block)
 {
-	if (*(uint32_t*)p_block == 0xba010000)
+	if (IS_SYNC_CODE(p_block))
 	{
 		p_block[20] &= 0xCD; // reset pes_scrambling_control and copyright flags;
 	}
@@ -633,13 +587,17 @@ void mpeg2_reset_cci(uint8_t *p_block)
 	int pes_len;
 
 	p_curr = p_block;
-	if (*(uint32_t*)p_block == 0xba010000)
+	if ( IS_SYNC_CODE(p_block) )
 	{
 		p_curr += 14 + (p_curr[13] & 0x07);
+
 		while (p_curr < p_block + DVDCPXM_BLOCK_SIZE)
 		{
 			pes_len = (p_curr[4] << 8) + p_curr[5];
-			if ((*(uint32_t*)p_curr & 0x00ffffff) == 0x00010000)
+
+			if (p_curr[0] == 0x00 &&
+				p_curr[1] == 0x00 &&
+				p_curr[2] == 0x01)
 			{
 				pes_sid = p_curr[3];
 				if (pes_sid == 0xbd) // private stream 1
@@ -662,7 +620,10 @@ void mpeg2_reset_cci(uint8_t *p_block)
 	}
 }
 
-int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key )
+/* inside this header are fields relating to the type of packet and DVD-Audio specifications */ 
+/* there are also a set of keys at different addresses that are used by CPPM to decrypt the block*/
+/* only the last 1920 bytes contain protected content, the first 180 bytes are left untouched. */
+int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key)
 {
 	uint64_t d_kc_i, k_au, k_i, k_c;
 	int encrypted;
@@ -670,32 +631,35 @@ int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t
 	encrypted = 0;
 	if (mpeg2_check_pes_scrambling_control(p_buffer))
 	{
-		k_au = c2_g(id_album, media_key) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[24];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_au) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[32];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[40];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[48];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[84];
-		B2N_64(d_kc_i);
-		k_c = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
+		k_au = c2_g( id_album, media_key ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[24] );
+		k_i = c2_g( d_kc_i, k_au ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[32] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[40] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[48] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[84] );
+		k_c = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
 		c2_dcbc(&p_buffer[DVDCPXM_BLOCK_SIZE - DVDCPXM_ENCRYPTED_SIZE], k_c, DVDCPXM_ENCRYPTED_SIZE);
 		mpeg2_reset_pes_scrambling_control(p_buffer);
 		encrypted = 1;
 	}
+
 	if ((flags & DVDCPXM_PRESERVE_CCI) != DVDCPXM_PRESERVE_CCI)
 		mpeg2_reset_cci(p_buffer);
+
 	return encrypted;
 }
 
-int cprm_decrypt_block(uint8_t *p_buffer, int flags)
+int cprm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key)
 {
 	uint64_t d_kc_i, k_au, k_i, k_c;
 	int encrypted;
@@ -703,40 +667,132 @@ int cprm_decrypt_block(uint8_t *p_buffer, int flags)
 	encrypted = 0;
 	if (mpeg2_check_pes_scrambling_control(p_buffer))
 	{
-		k_au = c2_g(id_album, media_key) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[24];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_au) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[32];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[40];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[48];
-		B2N_64(d_kc_i);
-		k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
-		d_kc_i = *(uint64_t*)&p_buffer[84];
-		B2N_64(d_kc_i);
-		k_c = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
+		k_au = c2_g( id_album, media_key ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[24] );
+		k_i = c2_g( d_kc_i, k_au ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[32] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[40] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[48] );
+		k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
+		READ64_BE( d_kc_i, &p_buffer[84] );
+		k_c = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+
 		c2_dcbc(&p_buffer[DVDCPXM_BLOCK_SIZE - DVDCPXM_ENCRYPTED_SIZE], k_c, DVDCPXM_ENCRYPTED_SIZE);
 		mpeg2_reset_pes_scrambling_control(p_buffer);
 		encrypted = 1;
 	}
+
 	if ((flags & DVDCPXM_PRESERVE_CCI) != DVDCPXM_PRESERVE_CCI)
 		mpeg2_reset_cci(p_buffer);
+
 	return encrypted;
 }
 
-int dvdcpxm_decrypt(void *p_buffer, int nr_blocks, int flags)
+int dvdcpxm_decrypt(cpxm cpxm, int media_type,void *p_buffer, int flags)
 {
 	switch (media_type)
 	{
 	case COPYRIGHT_PROTECTION_CPPM:
-		return cppm_decrypt_block((uint8_t*)p_buffer, flags);
+		return cppm_decrypt_block( (uint8_t*)p_buffer, flags, cpxm.id_album, cpxm.media_key );
+		break;
 	case COPYRIGHT_PROTECTION_CPRM:
-		return cprm_decrypt_block((uint8_t*)p_buffer, flags);
+		return cprm_decrypt_block( (uint8_t*)p_buffer, flags, cpxm.id_album ,cpxm.media_key );
+		break;
 	}
+
 	return 0;
 }
 
+/* CPXM exported prototype definitions */
+/* these methods should behave similarily but use dvdcpxm_decrypt instead of unscramble, and remove any unnecessary code */
+int dvdcpxm_close ( dvdcss_t dvdcss )
+{
+	int i_ret;
+	i_ret = dvdcss_close_device( dvdcss );
+
+	free( dvdcss->psz_device );
+	free( dvdcss );
+
+	return i_ret;
+}
+
+int dvdcpxm_read ( dvdcss_t dvdcss, void *p_buffer,
+										  int i_blocks,
+										  int i_flags ){
+	uint8_t *_p_buffer = p_buffer;
+	int i_ret, i_index;
+
+	i_ret = dvdcss->pf_read( dvdcss, _p_buffer, i_blocks );
+
+	if( i_ret <= 0
+		 || !(i_flags & DVDCSS_READ_DECRYPT) )
+	{
+		return i_ret;
+	}
+	
+	/* Decrypt the blocks we managed to read */
+	for( i_index = i_ret; i_index; i_index-- )
+	{
+		dvdcpxm_decrypt( dvdcss->cpxm, dvdcss->media_type, _p_buffer, DVDCPXM_RESET_CCI );
+		_p_buffer = _p_buffer + DVDCSS_BLOCK_SIZE;
+	}
+
+	return i_ret;
+}
+
+int dvdcpxm_seek ( dvdcss_t dvdcss, int i_blocks, int i_flags ){
+	return dvdcss->pf_seek( dvdcss, i_blocks );
+}
+
+int dvdcpxm_readv ( dvdcss_t dvdcss, void *p_iovec,
+										   int i_blocks,
+										   int i_flags )
+{
+	struct iovec *_p_iovec = p_iovec;
+	int i_ret, i_index;
+	void *iov_base;
+	size_t iov_len;
+
+	i_ret = dvdcss->pf_readv( dvdcss, _p_iovec, i_blocks );
+
+	if( i_ret <= 0
+		 || !(i_flags & DVDCSS_READ_DECRYPT) )
+	{
+		return i_ret;
+	}
+
+	/* Initialize loop for decryption */
+	iov_base = _p_iovec->iov_base;
+	iov_len = _p_iovec->iov_len;
+
+	/* Decrypt the blocks we managed to read */
+	for( i_index = i_ret; i_index; i_index-- )
+	{
+		/* Check that iov_len is a multiple of 2048 */
+		if( iov_len & 0x7ff )
+		{
+			return -1;
+		}
+
+		while( iov_len == 0 )
+		{
+			_p_iovec++;
+			iov_base = _p_iovec->iov_base;
+			iov_len = _p_iovec->iov_len;
+		}
+		/* reseting CCI handled by decrypt */
+		dvdcpxm_decrypt( dvdcss->cpxm, dvdcss->media_type, iov_base, DVDCPXM_RESET_CCI );
+
+		iov_base = (uint8_t *) iov_base + DVDCSS_BLOCK_SIZE;
+		iov_len -= DVDCSS_BLOCK_SIZE;
+	}
+
+	return i_ret;
+}

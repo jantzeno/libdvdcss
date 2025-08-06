@@ -1,7 +1,7 @@
 /**
- * \file libdvdcpxm.h
+ * \file cpxm.h
  * \author Maxim V.Anisiutkin <Maxim.Anisiutkin@gmail.com>
- * \author Saifelden Ismail <saifelden@gmail.com>
+ * \author Saifelden Ismail <saifeldenmi@gmail.com>
  *
  * \brief Integration of libdvdcpxm functionality into libdvdcss.
  *
@@ -30,51 +30,31 @@
  * with libdvdcss; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+#ifndef CPXM_H
+#define CPXM_H
 
-#ifndef _LIBDVDCPXM_H
-#define _LIBDVDCPXM_H
-
-#define COPYRIGHT_PROTECTION_NONE 0
-#define COPYRIGHT_PROTECTION_CPPM 1
-#define COPYRIGHT_PROTECTION_CPRM 2
-
-#define CPRM_STRUCT_MEDIA_ID 0x06
-#define CPRM_STRUCT_MKB      0x07
-
-#define CPRM_MEDIA_ID_SIZE   20
-#define CPRM_MKB_PACK_SIZE   24576
-#define CPRM_MKB_SIZE        (16 * CPRM_MKB_PACK_SIZE - 16)
-
-#define CCI_BYTE 0x00;
-
-#include <stdint.h>
 #include "dvdcss/dvdcss.h"
-#include "dvdcss/dvdcpxm.h"
+#include "bswap.h"
+#include <string.h>
 
-typedef struct {
-	uint8_t  col;
-	uint16_t row;
-	uint64_t key;
-} device_key_t;
+#define READ64_BE(dest, src) \
+    do { \
+        uint64_t __tmp; \
+        memcpy(&__tmp, (src), sizeof(uint64_t)); \
+        B2N_64(__tmp); \
+        (dest) = __tmp; \
+    } while(0)
 
-typedef struct {
-	struct {
-		uint8_t type:4;
-		uint8_t reserved:4;
-		uint8_t manufacturer_id[2];
-		uint8_t serial_number[5];
-	} id_media;
-	uint8_t dvd_mac[10];
-} cprm_media_id_t;
+typedef struct cpxm
+{
+   uint64_t media_key;
+   uint64_t id_album;
+   uint64_t id_media;
+   uint64_t vr_k_te;
+} cpxm;
 
-typedef struct {
-	uint8_t mkb_hash[8];
-	uint8_t reserved[8];
-} cprm_mkb_desc_t;
+/* cpxm uses the same css authentification method when using a usb dvd drive */
+int cppm_set_id_album( dvdcss_t dvdcss );
+int cprm_set_id_media( dvdcss_t dvdcss );
 
-typedef struct {
-	cprm_mkb_desc_t mkb_desc;
-	uint8_t		 mkb[CPRM_MKB_SIZE];
-} cprm_mkb_t;
-
-#endif
+#endif // CPXM_H

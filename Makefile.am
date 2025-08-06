@@ -22,6 +22,11 @@ lib_LTLIBRARIES = libdvdcss.la
 EXTRA_PROGRAMS = test/csstest test/dvd_region
 
 libdvdcss_la_SOURCES = \
+	src/bswap.h \
+	src/cpxm.h \
+	src/cpxm.c \
+	src/libdvdcpxm.h \
+	src/libdvdcpxm.c \
 	src/libdvdcss.c \
 	src/libdvdcss.h \
 	src/device.c \
@@ -52,6 +57,7 @@ test_dvd_region_CFLAGS = -I $(top_srcdir)/src
 pkgincludedir = $(includedir)/dvdcss
 pkginclude_HEADERS = \
 	src/dvdcss/dvdcss.h \
+	src/dvdcss/dvdcpxm.h \
 	src/dvdcss/version.h
 
 pkgconfigdir = $(libdir)/pkgconfig
