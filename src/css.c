@@ -79,7 +79,7 @@ static int  RecoverTitleKey ( int, const uint8_t *,
                               const uint8_t *, const uint8_t *, uint8_t * );
 static int  CrackTitleKey   ( dvdcss_t, int, int, dvd_key );
 
-static int  AttackPattern   ( const uint8_t[], uint8_t * );
+static int  AttackPattern   ( const uint8_t p_sec[ DVDCSS_BLOCK_SIZE ], uint8_t * );
 #if 0
 static int  AttackPadding   ( const uint8_t[] );
 #endif
