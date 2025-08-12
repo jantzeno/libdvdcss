@@ -701,10 +701,8 @@ int dvdcpxm_decrypt( cpxm cpxm, int media_type,void *p_buffer, int flags )
     {
         case COPYRIGHT_PROTECTION_CPPM:
             return cppm_decrypt_block( (uint8_t *) p_buffer, flags, cpxm.id_album, cpxm.media_key );
-            break;
         case COPYRIGHT_PROTECTION_CPRM:
             return cprm_decrypt_block( (uint8_t* ) p_buffer, flags, cpxm.id_album ,cpxm.media_key );
-            break;
     }
 
     return 0;
