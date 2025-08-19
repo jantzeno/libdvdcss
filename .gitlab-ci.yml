@@ -25,6 +25,16 @@ build-debian:
         - ../configure
         - make -j $(getconf _NPROCESSORS_ONLN)
 
+build-raspberry:
+    extends: .build-docker
+    image: registry.videolan.org/vlc-ubuntu-raspberry:20240806085528
+    script:
+        - autoreconf -fisv
+        - mkdir build
+        - cd build
+        - ../configure --host=arm-linux-gnueabihf
+        - make -j $(getconf _NPROCESSORS_ONLN)
+
 build-macos-x86_64:
     extends: .build-common
     tags:
