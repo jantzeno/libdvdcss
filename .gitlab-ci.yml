@@ -14,90 +14,68 @@ variables:
     tags:
         - docker
         - amd64
+    script:
+        - meson setup build
+        - meson compile -C build
+
+.build-cross:
+    extends: .build-docker
+    script:
+        - meson setup build --cross-file package/crossfiles/${CROSSFILE}.meson
+        - meson compile -C build
 
 build-debian:
     extends: .build-docker
-    image: registry.videolan.org/vlc-debian-unstable:20210315112333
-    script:
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure
-        - make -j $(getconf _NPROCESSORS_ONLN)
+    image: registry.videolan.org/dav1d-debian-unstable:20250207200301
 
 build-raspberry:
-    extends: .build-docker
-    image: registry.videolan.org/vlc-ubuntu-raspberry:20240806085528
-    script:
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure --host=arm-linux-gnueabihf
-        - make -j $(getconf _NPROCESSORS_ONLN)
-
-build-macos-x86_64:
-    extends: .build-common
-    tags:
-        - old-macmini
-    script:
-        - export PATH="/Users/videolanci/sandbox/bin:${PATH}"
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure
-        - make -j $(getconf _NPROCESSORS_ONLN)
+    extends: .build-cross
+    image: registry.videolan.org/vlc-ubuntu-raspberry:20250323132008
+    before_script:
+        - python3 -m venv .venv
+        - . .venv/bin/activate
+        - pip install --upgrade pip
+        - pip install meson==1.9.0
+    variables:
+        CROSSFILE: arm-linux-gnueabihf
 
 build-macos-arm64:
-    extends: .build-common
+    extends: .build-docker
     tags:
-        - monterey
-    script:
-        - export PATH="/Users/videolanci/sandbox/bin:${PATH}"
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure
-        - make -j $(getconf _NPROCESSORS_ONLN)
+        - macos-m1
+    before_script:
+        - python3 -m venv .venv
+        - . .venv/bin/activate
+        - pip install --upgrade pip
+        - pip install meson==1.9.0 ninja==1.13.0
 
-build-win64:
+build-macos:
     extends: .build-docker
-    image: registry.videolan.org/vlc-debian-win64:20201106143728
-    script:
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure --host=x86_64-w64-mingw32
-        - make -j $(getconf _NPROCESSORS_ONLN)
+    tags:
+        - amd64
+        - macos
 
-build-winarm64:
-    extends: .build-docker
-    image: registry.videolan.org/vlc-debian-llvm-ucrt:20241118101328
-    script:
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure --host=aarch64-w64-mingw32
-        - make -j $(getconf _NPROCESSORS_ONLN)
+build-win:
+    extends: .build-cross
+    image: registry.videolan.org/dav1d-debian-unstable:20250207200301
+    parallel:
+        matrix:
+            - CROSSFILE: [i686-w64-mingw32, x86_64-w64-mingw32]
 
-build-win32:
-    extends: .build-docker
-    image: registry.videolan.org/vlc-debian-win32:20201106141924
-    script:
-        - autoreconf -fisv
-        - mkdir build
-        - cd build
-        - ../configure --host=i686-w64-mingw32
-        - make -j $(getconf _NPROCESSORS_ONLN)
+build-win-arm:
+    extends: .build-cross
+    image: registry.videolan.org/vlc-debian-llvm-ucrt:20250826105319
+    parallel:
+        matrix:
+            - CROSSFILE: [armv7-w64-mingw32, aarch64-w64-mingw32]
 
 pages:
     extends: .build-docker
-    image:
-        name: registry.videolan.org/vlc-debian-unstable:20210315112333
+    image: registry.videolan.org/dav1d-debian-unstable:20250207200301
     script:
-        - autoreconf -fisv
-        - ./configure
-        - make apidoc
-        - mv doc/html public
+        - meson setup build -Denable_docs=true
+        - meson compile -C build docs
+        - mv build/doc/html public
     artifacts:
         paths:
             - public
