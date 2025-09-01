@@ -32,7 +32,7 @@
 #ifndef _DVDCPXM_H
 #define _DVDCPXM_H
 
-#include "dvdcss.h"
+#include <dvdcss/dvdcss.h>
 
 #ifdef __cplusplus
 extern "C" {
