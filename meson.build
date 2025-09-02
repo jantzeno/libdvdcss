@@ -45,6 +45,7 @@ check_headers = [
     'fcntl.h',
     'io.h',
     'pwd.h',
+    'scsi/sg.h',
     'sys/ioctl.h',
     'sys/param.h',
     'sys/stat.h',

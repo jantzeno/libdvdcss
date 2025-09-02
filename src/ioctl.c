@@ -60,6 +60,8 @@
 #endif
 #ifdef DVD_STRUCT_IN_LINUX_CDROM_H
 #   include <linux/cdrom.h>
+#endif
+#ifdef HAVE_SCSI_SG_H
 #   include <scsi/sg.h>
 #   include <stdlib.h>
 #endif
@@ -1000,7 +1002,7 @@ int ioctl_ReadCPRMMediaId(int i_fd,int *p_agid, uint8_t *p_buffer)
 {  
     int i_ret;
 
-#if defined( HAVE_LINUX_DVD_STRUCT )
+#if defined( HAVE_LINUX_DVD_STRUCT ) && defined( HAVE_SCSI_SG_H )
     struct sg_io_hdr io_hdr;
     uint8_t sense[32] = {0};  
     uint8_t cdb[12] = {0};
@@ -1089,7 +1091,7 @@ int ioctl_ReadCPRMMKBPack(int i_fd, int *p_agid, int mkb_pack, uint8_t *p_mkb_pa
 {
     int i_ret;
 
-#if defined( HAVE_LINUX_DVD_STRUCT )
+#if defined( HAVE_LINUX_DVD_STRUCT ) && defined( HAVE_SCSI_SG_H )
     uint8_t *sptd_buf = malloc( CPRM_MKB_PACK_SIZE + 4 );
     uint8_t cdb[12] = { 0 };
     uint8_t sense[32] = { 0 };
