@@ -5,6 +5,7 @@ Changes between 1.4.3 and 1.5.0:
     Add new dvdcpxm.h header for dvdcpxm function calls
     Add dvdcpxm_read, dvdcpxm_readv, and dvdcpxm_seek functions
     Add initialization and cleanup functions: dvdcpxm_init, dvdcpxm_close
+  * Switch build system to Meson
 
 
 Changes between 1.4.2 and 1.4.3:
