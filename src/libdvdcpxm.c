@@ -394,8 +394,10 @@ int process_mkb( uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint
     int mkb_pos, length, i, i_dev_key, no_more_keys, no_more_records;
     uint8_t record_type, column;
     uint64_t buffer, media_key, verification_data;
-    i_dev_key = 0;
-    no_more_keys = 0;
+
+    /* Init everything */
+    i_dev_key = no_more_keys = 0;
+    buffer = media_key = verification_data = 0;
 
     while ( !no_more_keys )
     {
