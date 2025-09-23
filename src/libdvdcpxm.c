@@ -754,7 +754,9 @@ int dvdcpxm_read ( dvdcss_t dvdcss, void *p_buffer,
     return i_ret;
 }
 
-int dvdcpxm_seek ( dvdcss_t dvdcss, int i_blocks, int i_flags ){
+int dvdcpxm_seek ( dvdcss_t dvdcss, int i_blocks, int i_flags )
+{
+    (void)i_flags;
     return dvdcss->pf_seek( dvdcss, i_blocks );
 }
 
