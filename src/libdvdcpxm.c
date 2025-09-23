@@ -170,7 +170,7 @@ void c2_init()
 {
     int i;
     unsigned c0, c1, c2, c3;
-    
+
     for ( i = 0; i < 256; i++ )
     {
         c0 = sbox[i];
@@ -620,7 +620,7 @@ void mpeg2_reset_cci( uint8_t *p_block )
     }
 }
 
-/* inside this header are fields relating to the type of packet and DVD-Audio specifications */ 
+/* inside this header are fields relating to the type of packet and DVD-Audio specifications */
 /* there are also a set of keys at different addresses that are used by CPPM to decrypt the block*/
 /* only the last 1920 bytes contain protected content, the first 180 bytes are left untouched. */
 int cppm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key )
@@ -734,7 +734,7 @@ int dvdcpxm_read ( dvdcss_t dvdcss, void *p_buffer,
     {
         return i_ret;
     }
-    
+
     /* Decrypt the blocks we managed to read */
     for( i_index = i_ret; i_index; i_index-- )
     {
