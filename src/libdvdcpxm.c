@@ -359,7 +359,8 @@ uint8_t *cprm_get_mkb( dvdcss_t dvdcss )
     int mkb_packs, i;
     mkb_packs = 16;
 
-    if ( ioctl_ReadCPRMMKBPack( dvdcss->i_fd, &dvdcss->css.i_agid, 0, (uint8_t *) mkb_pack, &mkb_packs ) )
+    if ( ioctl_ReadCPRMMKBPack( dvdcss->i_fd, &dvdcss->css.i_agid, 0,
+                                (uint8_t *) mkb_pack, &mkb_packs ) )
         return NULL;
 
     p_mkb = malloc( mkb_packs * CPRM_MKB_PACK_SIZE - 16 );
@@ -371,7 +372,8 @@ uint8_t *cprm_get_mkb( dvdcss_t dvdcss )
 
     for ( i = 1; i < mkb_packs; i++ )
     {
-        if ( ioctl_ReadCPRMMKBPack( dvdcss->i_fd,&dvdcss->css.i_agid, i, (uint8_t *) p_mkb + i * CPRM_MKB_PACK_SIZE - 16, &mkb_packs ) )
+        if ( ioctl_ReadCPRMMKBPack( dvdcss->i_fd,&dvdcss->css.i_agid, i,
+                    (uint8_t *) p_mkb + i * CPRM_MKB_PACK_SIZE - 16, &mkb_packs ) )
         {
             free( p_mkb );
             p_mkb = NULL;
@@ -384,8 +386,9 @@ uint8_t *cprm_get_mkb( dvdcss_t dvdcss )
 
 #define f( c, r ) (((uint64_t) c << 32) | (uint64_t) r)
 
-/* this function retrieves the main key used to decryption, this key is derived from applying the C2 cypher to the MKB
- * and the DVD-Audio player device keys, as well as a unique album_id and media_id */
+/* This function retrieves the main key used to decryption; this key is derived
+ * from applying the C2 cypher to the MKB and the DVD-Audio player device keys,
+ * as well as a unique album_id and media_id */
 int process_mkb( uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint64_t *p_media_key )
 {
     int mkb_pos, length, i, i_dev_key, no_more_keys, no_more_records;
@@ -510,10 +513,12 @@ int vr_get_k_te( cpxm cpxm,char *psz_vr_mangr )
     return ret;
 }
 
-/* function should be called on a dvdcss var to set cppm struct which needs to persist in order to decrypt the media */
+/* Function should be called on a dvdcss var to set cppm struct which needs
+ * to persist in order to decrypt the media */
 LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
 {
-    /* in the case that p_mkb is received as null, then either you were unable to read the mkb or the encryption type is cprm */
+    /* In the case that p_mkb is received as null, then either you were unable
+     * to read the mkb or the encryption type is cprm */
     char psz_file[PATH_MAX];
     int ret = -1;
 
@@ -528,7 +533,9 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
             {
                 if ( p_mkb )
                 {
-                    ret = process_mkb(p_mkb, cppm_device_keys, sizeof(cppm_device_keys) / sizeof(*cppm_device_keys), &dvdcss->cpxm.media_key);
+                    ret = process_mkb( p_mkb, cppm_device_keys,
+                            sizeof(cppm_device_keys) / sizeof(*cppm_device_keys),
+                            &dvdcss->cpxm.media_key );
                     free(p_mkb);
                     if (ret) break;
                 }
@@ -540,7 +547,9 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
                 p_mkb = cprm_get_mkb( dvdcss );
                 if ( p_mkb )
                 {
-                    ret = process_mkb( p_mkb, cprm_device_keys, sizeof( cprm_device_keys ) / sizeof( *cprm_device_keys ), &dvdcss->cpxm.media_key );
+                    ret = process_mkb( p_mkb, cprm_device_keys,
+                            sizeof( cprm_device_keys ) / sizeof( *cprm_device_keys ),
+                            &dvdcss->cpxm.media_key );
                     free( p_mkb );
                     if (ret) break;
                 }
@@ -559,7 +568,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
     return dvdcss->media_type;
 }
 
-/* makes sure that the block is encrypted */
+/* Ensures that the block is encrypted */
 int mpeg2_check_pes_scrambling_control( uint8_t *p_block )
 {
     int pes_scrambling_control;
@@ -620,8 +629,8 @@ void mpeg2_reset_cci( uint8_t *p_block )
     }
 }
 
-/* inside this header are fields relating to the type of packet and DVD-Audio specifications */
-/* there are also a set of keys at different addresses that are used by CPPM to decrypt the block*/
+/* Inside this header are fields relating to the type of packet and DVD-Audio specifications. */
+/* There are also a set of keys at different addresses that are used by CPPM to decrypt the block */
 /* only the last 1920 bytes contain protected content, the first 180 bytes are left untouched. */
 int cppm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key )
 {
