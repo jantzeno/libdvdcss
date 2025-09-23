@@ -34,3 +34,6 @@
 /test/.libs
 /test/csstest
 /test/dvd_region
+/build*
+/releases*
+/tarballs*
