@@ -1,11 +1,12 @@
 Changes between 1.4.3 and 1.5.0:
 --------------------------------
 
-  * Add support for DVD-Audio disc decryption via libdvdcpxm integration 
+  * Add support for DVD-Audio disc decryption via libdvdcpxm integration
     Add new dvdcpxm.h header for dvdcpxm function calls
     Add dvdcpxm_read, dvdcpxm_readv, and dvdcpxm_seek functions
     Add initialization and cleanup functions: dvdcpxm_init, dvdcpxm_close
-  * Switch build system to Meson
+  * Switch build system to Meson, and removal of autotools support
+  * Miscellaneous cleanups and improvements to support more OSes and compilers
 
 
 Changes between 1.4.2 and 1.4.3:
