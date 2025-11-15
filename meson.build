@@ -46,6 +46,7 @@ check_headers = [
     'io.h',
     'pwd.h',
     'scsi/sg.h',
+    'cam/scsi/scsi_sg.h',
     'sys/ioctl.h',
     'sys/param.h',
     'sys/stat.h',
