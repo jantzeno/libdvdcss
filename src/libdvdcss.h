@@ -26,6 +26,11 @@
 
 #include <limits.h>
 
+#include <config.h>
+#ifdef HAVE_SYS_PARAM_H
+#   include <sys/param.h>
+#endif
+
 #include "dvdcss/dvdcss.h"
 #include "cpxm.h"
 #include "css.h"
