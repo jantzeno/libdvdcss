@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "cpxm.h"
 #include "dvdcss/dvdcpxm.h"
@@ -529,6 +530,26 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
 {
     /* In the case that p_mkb is received as null, then either you were unable
      * to read the mkb or the encryption type is cprm */
+    /* if no file mkb file is passed, check cache */
+    if (!p_mkb)
+    {
+        cpxm_cache *cpxm_iterator = g_cpxm_cache;
+        struct stat file_stat;
+        fstat( dvdcss->i_fd, &file_stat );
+        while ( cpxm_iterator != NULL )
+        {
+            /* look for match in cache */
+            if ( file_stat.st_dev == cpxm_iterator->st_dev )
+            {
+                dvdcss->cpxm = cpxm_iterator->cpxm;
+                dvdcss->cpxm_was_cached = 0;
+                return dvdcss->media_type;
+            }
+            cpxm_iterator = cpxm_iterator->p_next;
+        }
+        return -1;
+    }
+
     p_cpxm cpxm = malloc(sizeof(cpxm_s));
     if (!cpxm)
        return -1;
@@ -581,6 +602,32 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
             }
             break;
     }
+
+    /* store in cache */
+    cpxm_cache* cpxm_cache_addition = malloc(sizeof(cpxm_cache));
+
+    if (!cpxm_cache_addition)
+        return -1;
+
+    struct stat stat;
+    fstat(dvdcss->i_fd, &stat);
+
+    /* create cache node */
+    cpxm_cache_addition->cpxm = dvdcss->cpxm;
+    cpxm_cache_addition->st_dev = stat.st_dev;
+    cpxm_cache_addition->p_next = NULL;
+
+    /* copy over so needs to be set only once */
+    if ( g_cpxm_cache == NULL )
+        g_cpxm_cache = cpxm_cache_addition;
+    else
+    {
+        cpxm_cache *cpxm_iterator = g_cpxm_cache;
+        while ( cpxm_iterator->p_next != NULL )
+            cpxm_iterator = cpxm_iterator->p_next;
+        cpxm_iterator->p_next = cpxm_cache_addition;
+    }
+    dvdcss->cpxm_was_cached = 1;
     return dvdcss->media_type;
 }
 
