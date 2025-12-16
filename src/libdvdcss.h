@@ -77,6 +77,9 @@ struct dvdcss_s
 
     /* struct to be used only internally in CPXM */
     p_cpxm cpxm;
+    /* to check if this was cached, or if it was copied from cache */
+    /* will use to check if disc is being closed or if it's just a file */
+    int cpxm_was_cached;
 
     /* i_copyright read from ioctl_copyright used by cpxm to determine type of encryption */
     /* 0 - None, 1 - CPPM, 2 - CPRM */
