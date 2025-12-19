@@ -96,6 +96,7 @@
  * Preamble
  */
 #include "config.h"
+#include "libdvdcpxm.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -852,6 +853,10 @@ LIBDVDCSS_EXPORT int dvdcss_close ( dvdcss_t dvdcss )
     i_ret = dvdcss_close_device( dvdcss );
 
     free( dvdcss->psz_device );
+
+    /* close cpxm related structures if they were used */
+    dvdcpxm_close_internal( dvdcss );
+
     free( dvdcss );
 
     return i_ret;

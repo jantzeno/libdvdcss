@@ -780,6 +780,46 @@ int dvdcpxm_decrypt( p_cpxm cpxm, int media_type,void *p_buffer, int flags )
     return 0;
 }
 
+/* this function is used internally */
+int dvdcpxm_close_internal ( dvdcss_t dvdcss )
+{
+    if( dvdcss->cpxm )
+        free( dvdcss->cpxm );
+
+    if ( !g_cpxm_cache )
+        return 0;
+
+    /* check ID */
+    struct stat stat;
+    if ( fstat( dvdcss->i_fd, &stat ) < 0 )
+        return -1;
+
+    cpxm_cache *prev = NULL;
+    cpxm_cache *cpxm_iterator = g_cpxm_cache;
+
+    /* remove only if cached */
+    while ( cpxm_iterator != NULL && dvdcss->cpxm_was_cached )
+    {
+        cpxm_cache *next = cpxm_iterator->p_next;
+        if ( cpxm_iterator->st_dev == stat.st_dev )
+        {
+            if ( prev == NULL )
+                g_cpxm_cache = next;
+            else
+                prev->p_next = next;
+
+            free( cpxm_iterator->cpxm );
+            free( cpxm_iterator );
+            break;
+        }
+        else
+            prev = cpxm_iterator;
+
+        cpxm_iterator = next;
+    }
+    return 0;
+}
+
 /* CPXM exported prototype definitions */
 /* these methods should behave similarily but use dvdcpxm_decrypt instead of unscramble, and remove any unnecessary code */
 int dvdcpxm_close ( dvdcss_t dvdcss )

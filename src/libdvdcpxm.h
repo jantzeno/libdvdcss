@@ -83,4 +83,7 @@ typedef struct
     uint8_t         mkb[CPRM_MKB_SIZE];
 } cprm_mkb_t;
 
+/* used to clear dvdcpxm structures, including cache */
+int dvdcpxm_close_internal ( dvdcss_t );
+
 #endif
