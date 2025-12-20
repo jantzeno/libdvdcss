@@ -822,16 +822,11 @@ int dvdcpxm_close_internal ( dvdcss_t dvdcss )
 
 /* CPXM exported prototype definitions */
 /* these methods should behave similarily but use dvdcpxm_decrypt instead of unscramble, and remove any unnecessary code */
+
+/* aliased dvdcpxm_close to not break ABI */
 int dvdcpxm_close ( dvdcss_t dvdcss )
 {
-    int i_ret;
-    i_ret = dvdcss_close_device( dvdcss );
-
-    free( dvdcss->cpxm );
-    free( dvdcss->psz_device );
-    free( dvdcss );
-
-    return i_ret;
+    return dvdcss_close( dvdcss );
 }
 
 int dvdcpxm_read ( dvdcss_t dvdcss, void *p_buffer,
@@ -860,8 +855,7 @@ int dvdcpxm_read ( dvdcss_t dvdcss, void *p_buffer,
 
 int dvdcpxm_seek ( dvdcss_t dvdcss, int i_blocks, int i_flags )
 {
-    (void)i_flags;
-    return dvdcss->pf_seek( dvdcss, i_blocks );
+    dvdcss_seek( dvdcss, i_blocks, DVDCSS_NOFLAGS );
 }
 
 int dvdcpxm_readv ( dvdcss_t dvdcss, void *p_iovec,
