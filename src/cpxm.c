@@ -73,7 +73,7 @@ int cppm_set_id_album( dvdcss_t dvdcss )
         p_buffer[i] ^= dvdcss->css.p_bus_key[4 - (i % DVD_KEY_SIZE)];
     }
 
-    READ64_BE( dvdcss->cpxm.id_album, &p_buffer[80] );
+    READ64_BE( dvdcss->cpxm->id_album, &p_buffer[80] );
     return 0;
 }
 
@@ -92,7 +92,7 @@ int cprm_set_id_media( dvdcss_t dvdcss )
     if( ioctl_ReadCPRMMediaId( dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer ) ) 
         return -1;
 
-    READ64_BE( dvdcss->cpxm.id_media,
+    READ64_BE( dvdcss->cpxm->id_media,
                    p_buffer + offsetof(cprm_media_id_t, id_media)
                    );
 

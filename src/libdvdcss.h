@@ -76,7 +76,7 @@ struct dvdcss_s
     int    b_debug;
 
     /* struct to be used only internally in CPXM */
-    struct cpxm cpxm;
+    p_cpxm cpxm;
 
     /* i_copyright read from ioctl_copyright used by cpxm to determine type of encryption */
     /* 0 - None, 1 - CPPM, 2 - CPRM */

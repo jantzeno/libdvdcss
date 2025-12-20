@@ -49,6 +49,14 @@
 #define IS_SYNC_CODE(word) \
         ( (word)[0] == 0x00 && (word)[1] == 0x00 && (word)[2] == 0x01 && (word)[3] == 0xBA )
 
+typedef struct cpxm_cache {
+    p_cpxm cpxm;
+    dev_t st_dev;
+    struct cpxm_cache * p_next;
+} cpxm_cache;
+
+cpxm_cache *g_cpxm_cache = NULL;
+
 /* these values are used by libdvdcpxm to process the Media Key Block */
 /* They are present inside DVD-Audio players and are used in conjunction with keys taken from the disc in order to generate the final media_key used by the C2 Cypher */
 uint32_t sbox_f[256];
@@ -486,7 +494,7 @@ int process_mkb( uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint
     return -1;
 }
 
-int vr_get_k_te( cpxm cpxm,char *psz_vr_mangr )
+int vr_get_k_te( p_cpxm cpxm,char *psz_vr_mangr )
 {
     FILE    *f_vr_m;
     uint8_t vmgi_mat[512];
@@ -501,11 +509,11 @@ int vr_get_k_te( cpxm cpxm,char *psz_vr_mangr )
     {
         if ( memcmp( vmgi_mat, "DVD_RTR_VMG0", 12 ) == 0 )
         {
-            cpxm.vr_k_te = 0;
+            cpxm->vr_k_te = 0;
             if ( vmgi_mat[267] & 1 ) /* Check encrypted title key status bit */
             {
-                memcpy( &cpxm.vr_k_te, &vmgi_mat[268], sizeof( cpxm.vr_k_te ) );
-                B2N_64( cpxm.vr_k_te );
+                memcpy( &cpxm->vr_k_te, &vmgi_mat[268], sizeof( cpxm->vr_k_te ) );
+                B2N_64( cpxm->vr_k_te );
             }
             ret = 0;
         }
@@ -521,6 +529,12 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
 {
     /* In the case that p_mkb is received as null, then either you were unable
      * to read the mkb or the encryption type is cprm */
+    p_cpxm cpxm = malloc(sizeof(cpxm_s));
+    if (!cpxm)
+       return -1;
+
+    dvdcss->cpxm = cpxm;
+
     char psz_file[PATH_MAX];
     int ret = -1;
 
@@ -537,7 +551,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
                 {
                     ret = process_mkb( p_mkb, cppm_device_keys,
                             sizeof(cppm_device_keys) / sizeof(*cppm_device_keys),
-                            &dvdcss->cpxm.media_key );
+                            &dvdcss->cpxm->media_key );
                     free(p_mkb);
                     if (ret) break;
                 }
@@ -551,7 +565,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
                 {
                     ret = process_mkb( p_mkb, cprm_device_keys,
                             sizeof( cprm_device_keys ) / sizeof( *cprm_device_keys ),
-                            &dvdcss->cpxm.media_key );
+                            &dvdcss->cpxm->media_key );
                     free( p_mkb );
                     if (ret) break;
                 }
@@ -706,14 +720,14 @@ int cprm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t id_album, uint64_
     return encrypted;
 }
 
-int dvdcpxm_decrypt( cpxm cpxm, int media_type,void *p_buffer, int flags )
+int dvdcpxm_decrypt( p_cpxm cpxm, int media_type,void *p_buffer, int flags )
 {
     switch ( media_type )
     {
         case COPYRIGHT_PROTECTION_CPPM:
-            return cppm_decrypt_block( (uint8_t *) p_buffer, flags, cpxm.id_album, cpxm.media_key );
+            return cppm_decrypt_block( (uint8_t *) p_buffer, flags, cpxm->id_album, cpxm->media_key );
         case COPYRIGHT_PROTECTION_CPRM:
-            return cprm_decrypt_block( (uint8_t* ) p_buffer, flags, cpxm.id_album ,cpxm.media_key );
+            return cprm_decrypt_block( (uint8_t* ) p_buffer, flags, cpxm->id_album ,cpxm->media_key );
     }
 
     return 0;
@@ -726,6 +740,7 @@ int dvdcpxm_close ( dvdcss_t dvdcss )
     int i_ret;
     i_ret = dvdcss_close_device( dvdcss );
 
+    free( dvdcss->cpxm );
     free( dvdcss->psz_device );
     free( dvdcss );
 

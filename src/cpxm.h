@@ -51,7 +51,10 @@ typedef struct cpxm
    uint64_t id_album;
    uint64_t id_media;
    uint64_t vr_k_te;
-} cpxm;
+} cpxm_s;
+
+/* for persistance */
+typedef cpxm_s* p_cpxm;
 
 /* cpxm uses the same css authentification method when using a usb dvd drive */
 int cppm_set_id_album( dvdcss_t dvdcss );
