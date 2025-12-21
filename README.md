@@ -1,13 +1,16 @@
-# Goals and feature
+# Goals and features
 
 **Libdvdcss** is a portable abstraction **lib**rary for **DVD** decryption.
 
-It is part of the **VideoLAN** project, which among other things produces **VLC**, a full video client/server streaming solution. 
+It is part of the **VideoLAN** project, which among other things produces **VLC**, a full video client/server streaming solution.  
+**VLC** can also be used as a standalone program to **play video streams** from a hard disk or a DVD.
 
-**VLC** can  also be used as a standalone program to **play video streams** from a hard disk or a DVD.
+**Libdvdcss** is cross-platform and currently supports **GNU/Linux**, **FreeBSD**, **NetBSD**, **OpenBSD**, **Haiku**,
+**Mac OS X**, **Solaris**, **QNX**, **OS/2**, and **Windows** (XP or later).
 
+**Libdvdcss** supports the CSS decryption scheme for DVD-Video, but incorporates the CPXM decryption for DVD-Audio too.
 
-**Libdvdcss** currently supported platforms are **GNU/Linux**, **FreeBSD**, **NetBSD**, **OpenBSD**, **Haiku**, **Mac OS X**, **Solaris**, **QNX**, **OS/2**, and **Windows NT 4.0 SP4** (with IE 5.0) or later.
+**Libdvdcss** is small (5K LoC) and written in C, to be more portable.
 
 ## Building and installing instructions for Libdvdcss
 
@@ -68,7 +71,7 @@ The [VideoLAN Code of Conduct](https://wiki.videolan.org/CoC) applies to this pr
 ## Resources
 
 
-The [VideoLAN web site](http://www.videolan.org/) is a good start for
+The [VideoLAN web site](https://www.videolan.org/) is a good start for
 information about MPEG and DVD playback. 
 
 Have a look at the [support section](https://www.videolan.org/support/) to look for answers.
