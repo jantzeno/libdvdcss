@@ -51,6 +51,7 @@ typedef struct cpxm
    uint64_t id_album;
    uint64_t id_media;
    uint64_t vr_k_t;
+   uint64_t apstb;
 } cpxm_s;
 
 /* for persistance */
