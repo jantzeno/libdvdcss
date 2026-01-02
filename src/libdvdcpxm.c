@@ -527,7 +527,6 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_input )
 
     dvdcss->cpxm = cpxm;
 
-    char psz_file[PATH_MAX];
     int ret = -1;
 
     uint8_t *p_mkb;
