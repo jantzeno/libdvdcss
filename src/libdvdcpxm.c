@@ -495,35 +495,6 @@ int process_mkb( uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint
     return -1;
 }
 
-int vr_get_k_te( p_cpxm cpxm,char *psz_vr_mangr )
-{
-    FILE    *f_vr_m;
-    uint8_t vmgi_mat[512];
-    int ret = -1;
-
-    f_vr_m = fopen( psz_vr_mangr, "rb" );
-
-    if ( !f_vr_m )
-        return -1;
-
-    if ( fread(vmgi_mat, 1, 512, f_vr_m) == 512 )
-    {
-        if ( memcmp( vmgi_mat, "DVD_RTR_VMG0", 12 ) == 0 )
-        {
-            cpxm->vr_k_te = 0;
-            if ( vmgi_mat[267] & 1 ) /* Check encrypted title key status bit */
-            {
-                memcpy( &cpxm->vr_k_te, &vmgi_mat[268], sizeof( cpxm->vr_k_te ) );
-                B2N_64( cpxm->vr_k_te );
-            }
-            ret = 0;
-        }
-    }
-
-    fclose( f_vr_m );
-    return ret;
-}
-
 /* Function should be called on a dvdcss var to set cppm struct which needs
  * to persist in order to decrypt the media */
 LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
