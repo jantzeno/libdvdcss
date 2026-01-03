@@ -710,34 +710,48 @@ int cppm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t id_album, uint64_
     return encrypted;
 }
 
-int cprm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t id_album, uint64_t media_key )
+/*
+ * check if MPEG Video headers exist
+ * Returns:
+ * 1 = Decryption successful
+ * 0 = Decryption failed
+ */
+int is_valid_mpeg_payload(uint8_t *buffer) {
+    for (size_t i = 0; i < DVDCPXM_BLOCK_SIZE - 4; i++) {
+        /* Look for the Start Code Prefix (00 00 01) */
+        if (buffer[i] == 0x00 && buffer[i+1] == 0x00 && buffer[i+2] == 0x01) {
+            uint8_t code = buffer[i+3];
+            if (code == 0xB3) return 1; // Sequence Header
+            if (code == 0xB8) return 1; // GOP Header
+            if (code == 0x00) return 1; // Picture Header
+        }
+    }
+    return 0;
+}
+
+int cprm_decrypt_block( uint8_t *p_buffer, int flags, uint64_t vr_k_t, uint64_t apstb )
 {
-    uint64_t d_kc_i, k_au, k_i, k_c;
+    uint64_t d_tkc, k_i, k_c;
     int encrypted;
 
     encrypted = 0;
     if ( mpeg2_check_pes_scrambling_control( p_buffer ) )
     {
-        k_au = c2_g( id_album, media_key ) & 0x00ffffffffffffff;
+        /* Add the CPRM_CI byte (or APSTB bits) to the title key to get K_i.
+         * We treat this as a full byte (0-255) to support both DVD-VR and DVD-Video. */
+        k_i = vr_k_t + ( apstb );
 
-        READ64_BE( d_kc_i, &p_buffer[24] );
-        k_i = c2_g( d_kc_i, k_au ) & 0x00ffffffffffffff;
-
-        READ64_BE( d_kc_i, &p_buffer[32] );
-        k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
-
-        READ64_BE( d_kc_i, &p_buffer[40] );
-        k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
-
-        READ64_BE( d_kc_i, &p_buffer[48] );
-        k_i = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
-
-        READ64_BE( d_kc_i, &p_buffer[84] );
-        k_c = c2_g( d_kc_i, k_i ) & 0x00ffffffffffffff;
+        /* read the Title Key Conversion Data */
+        READ64_BE( d_tkc , &p_buffer[84] );
+        k_c = c2_g( k_i, d_tkc )  & 0x00ffffffffffffff;
 
         c2_dcbc( &p_buffer[DVDCPXM_BLOCK_SIZE - DVDCPXM_ENCRYPTED_SIZE], k_c, DVDCPXM_ENCRYPTED_SIZE );
         mpeg2_reset_pes_scrambling_control( p_buffer );
-        encrypted = 1;
+        /* check if decryption failed */
+        if ( is_valid_mpeg_payload( p_buffer ) )
+            encrypted = 1;
+        else
+            encrypted = -1;
     }
 
     if ( ( flags & DVDCPXM_PRESERVE_CCI ) != DVDCPXM_PRESERVE_CCI )
@@ -753,7 +767,44 @@ int dvdcpxm_decrypt( p_cpxm cpxm, int media_type,void *p_buffer, int flags )
         case COPYRIGHT_PROTECTION_CPPM:
             return cppm_decrypt_block( (uint8_t *) p_buffer, flags, cpxm->id_album, cpxm->media_key );
         case COPYRIGHT_PROTECTION_CPRM:
-            return cprm_decrypt_block( (uint8_t* ) p_buffer, flags, cpxm->id_album ,cpxm->media_key );
+        {
+            /* return early if there is no encryption to avoid allocating 2kb */
+            if ( !mpeg2_check_pes_scrambling_control( p_buffer ) )
+                return cprm_decrypt_block( (uint8_t* ) p_buffer, flags, cpxm->vr_k_t, cpxm->apstb );
+
+            /* we are not sure if apstb is correct, so we operate on a copied buffer first */
+            uint8_t temp_buffer[DVDCPXM_BLOCK_SIZE];
+
+            /* For DVD-VR we only need to check the first 4 possible values since apstb is 2 bits
+             * for DVD-Video with CPRM we need to check more, since CPRM_CI is more bits */
+            uint64_t nr_possible_values = 256;
+
+            /* assume the retained value is initially correct */
+            memcpy(temp_buffer, p_buffer, DVDCPXM_BLOCK_SIZE);
+            int result = cprm_decrypt_block( temp_buffer, flags, cpxm->vr_k_t, cpxm->apstb );
+
+            if ( result == 1 ) {
+                memcpy(p_buffer, temp_buffer, DVDCPXM_BLOCK_SIZE);
+                return result;
+            }
+
+            /* our old value must not have been correct, we must guess */
+            for (  uint64_t guess = 0; guess < nr_possible_values ; guess++ ) {
+
+                /* skip if we already checked this above */
+                if ( guess == cpxm->apstb ) continue;
+
+                /* try our value */
+                memcpy(temp_buffer, p_buffer, DVDCPXM_BLOCK_SIZE);
+                result = cprm_decrypt_block( temp_buffer, flags, cpxm->vr_k_t, guess );
+                if ( result == 1 ) {
+                     memcpy(p_buffer, temp_buffer, DVDCPXM_BLOCK_SIZE);
+                     cpxm->apstb = guess;
+                     return result;
+                }
+            }
+
+        }
     }
 
     return 0;
