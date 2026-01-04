@@ -67,7 +67,9 @@ extern "C" {
  */
 
 /* Called after the DVD is opened to initialize the cpxm struct, Must be run after dvdcss_open */
-LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_mkb);
+/* in the case of DVD-Audio, the MKB must be given as input, 
+ * in the case of DVD-VR, the title key should be given as input */
+LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input);
 
 /* Same as dvdcss_close but frees the cpxm struct as well */
 LIBDVDCSS_EXPORT int dvdcpxm_close ( dvdcss_t dvdcss );
