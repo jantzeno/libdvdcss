@@ -1,5 +1,5 @@
 project('libdvdcss', 'c',
-    version: '1.5.0',
+    version: '1.6.0',
     meson_version: '>= 0.60.0',
     default_options: ['buildtype=debugoptimized',
                       'c_std=c17',
@@ -17,7 +17,7 @@ cdata = configuration_data()
 dvdcss_inc_dirs = include_directories('.', 'src', 'src/dvdcss')
 
 # The version number for the shared library
-dvdcss_soname_version = '2.3.0'
+dvdcss_soname_version = '2.4.0'
 
 dvdcss_version = meson.project_version()
 dvdcss_version_split = dvdcss_version.split('.')

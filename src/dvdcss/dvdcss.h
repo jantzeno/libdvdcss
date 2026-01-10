@@ -106,6 +106,8 @@ LIBDVDCSS_EXPORT const char *dvdcss_error ( const dvdcss_t );
 
 LIBDVDCSS_EXPORT int      dvdcss_is_scrambled ( dvdcss_t );
 
+LIBDVDCSS_EXPORT int dvdcss_get_encryption_type ( dvdcss_t );
+
 #ifdef __cplusplus
 }
 #endif

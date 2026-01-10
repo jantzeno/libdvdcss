@@ -872,3 +872,13 @@ LIBDVDCSS_EXPORT int dvdcss_is_scrambled ( dvdcss_t dvdcss )
 {
     return dvdcss->b_scrambled;
 }
+
+/**
+ * \brief Return the type of encryption
+ *
+ * \return 0 if the disc is unencrypted, 1 if cppm or css, 2 if cprm
+ */
+LIBDVDCSS_EXPORT int dvdcss_get_encryption_type ( dvdcss_t dvdcss )
+{
+    return dvdcss->media_type;
+}
