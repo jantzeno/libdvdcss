@@ -1,3 +1,15 @@
+--------------------------------
+Changes between 1.5.0 and 1.6.0:
+--------------------------------
+
+  * Add dvdcss_get_encryption_type function to the public API
+    This allows applications to query the disc's copyright protection system
+    type (CPST) directly from the drive, enabling better distinction between
+    CSS/CPPM and CPRM protected media during initialization.
+  * Added support for CPRM (Content Protection for Recordable Media) decryption.
+  * Updated dvdcpxm_setup to allow context reuse via NULL arguments and to accept a raw CPRM key in place of the MKB.
+
+
 Changes between 1.4.3 and 1.5.0:
 --------------------------------
 
