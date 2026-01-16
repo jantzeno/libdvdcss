@@ -497,12 +497,12 @@ int process_mkb( uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys, uint
 
 /* Function should be called on a dvdcss var to set cppm struct which needs
  * to persist in order to decrypt the media */
-LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
+LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_input )
 {
     /* In the case that p_mkb is received as null, then either you were unable
      * to read the mkb or the encryption type is cprm */
     /* if no file mkb file is passed, check cache */
-    if (!p_mkb)
+    if (!p_input)
     {
         cpxm_cache *cpxm_iterator = g_cpxm_cache;
         struct stat file_stat;
@@ -530,6 +530,8 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
     char psz_file[PATH_MAX];
     int ret = -1;
 
+    uint8_t *p_mkb;
+
     c2_init();
     switch ( dvdcss->media_type )
     {
@@ -537,6 +539,8 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
             ret = 0;
             break;
         case COPYRIGHT_PROTECTION_CPPM:
+            /* the input is the media key block */
+            p_mkb = p_input;
             if ( cppm_set_id_album( dvdcss ) == 0 )
             {
                 if ( p_mkb )
@@ -561,15 +565,19 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
                     free( p_mkb );
                     if (ret) break;
                 }
-                snprintf( psz_file, PATH_MAX, "%s/DVD_RTAV/VR_MANGR.IFO", dvdcss->psz_device );
-                ret = vr_get_k_te( dvdcss->cpxm,psz_file );
 
-                if (ret)
-                {
-                    snprintf( psz_file, PATH_MAX, "%s/DVD_RTAV/VR_MANGR.BUP", dvdcss->psz_device );
-                    ret = vr_get_k_te( dvdcss->cpxm,psz_file );
-                    if (ret) break;
-                }
+
+                /* get the media unique key */
+                uint64_t k_mu = c2_g( cpxm->media_key, cpxm->id_media ) & 0x00ffffffffffffff;
+
+                /* decrypt the encrypted title key */
+                uint64_t k_te;
+                READ64_BE( k_te , p_input );
+                uint64_t k_t = c2_dec( k_mu, k_te ) & 0x00ffffffffffffff;
+
+                /* store decrypted title key for vr decryption */
+                cpxm->vr_k_t = k_t;
+
             }
             break;
     }
