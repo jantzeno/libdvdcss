@@ -521,7 +521,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init( dvdcss_t dvdcss, uint8_t *p_mkb )
         return -1;
     }
 
-    p_cpxm cpxm = malloc(sizeof(cpxm_s));
+    p_cpxm cpxm = calloc(1, sizeof(cpxm_s));
     if (!cpxm)
        return -1;
 
