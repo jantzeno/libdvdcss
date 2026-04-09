@@ -36,10 +36,10 @@
 #include "config.h"
 
 #include <algorithm>
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/types.h>
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
@@ -57,6 +57,15 @@
 #include "device.h"
 #include "ioctl.h"
 #include "libdvdcss.h"
+
+using std::calloc;
+using std::free;
+using std::memcmp;
+using std::memcpy;
+using std::memset;
+using std::snprintf;
+using std::sprintf;
+using std::sscanf;
 
 #define PSZ_KEY_SIZE (DVD_KEY_SIZE * 3)
 

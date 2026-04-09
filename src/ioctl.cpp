@@ -32,9 +32,9 @@
  *****************************************************************************/
 #include "config.h"
 
-#include <stdio.h>
-
-#include <string.h> /* memcpy(), memset() */
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/types.h>
 
 #if defined(_WIN32)
@@ -63,11 +63,9 @@
 #endif
 #ifdef HAVE_SCSI_SG_H
 #include <scsi/sg.h>
-#include <stdlib.h>
 #endif
 #ifdef HAVE_CAM_SCSI_SCSI_SG_H
 #include <cam/scsi/scsi_sg.h>
-#include <stdlib.h>
 #endif
 #ifdef DVD_STRUCT_IN_DVD_H
 #include <dvd.h>
@@ -96,6 +94,11 @@
 #include "dvdcss/dvdcss.h"
 #include "ioctl.h"
 #include "libdvdcpxm.h"
+
+using std::free;
+using std::malloc;
+using std::memcpy;
+using std::memset;
 
 #define DVD_CHALLENGE_SIZE 10
 

@@ -32,11 +32,12 @@
  */
 
 #include "config.h"
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
+#include <climits>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 
 #include "bswap.h"
@@ -50,6 +51,11 @@
 #include <array>
 #include <list>
 #include <memory>
+#include <vector>
+
+using std::free;
+using std::malloc;
+using std::memcpy;
 
 #define IS_SYNC_CODE(word)                                                     \
   ((word)[0] == 0x00 && (word)[1] == 0x00 && (word)[2] == 0x01 &&              \
@@ -336,34 +342,28 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
 }
 
 /* for CPPM, libdvdread is responsible for retrieving the Media Key Block */
-uint8_t *cprm_get_mkb(dvdcss_t dvdcss) {
+std::vector<uint8_t> cprm_get_mkb(dvdcss_t dvdcss) {
   uint8_t mkb_pack[CPRM_MKB_PACK_SIZE];
-  uint8_t *p_mkb = NULL;
   int mkb_packs, i;
   mkb_packs = 16;
 
   if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd, &dvdcss->css.i_agid, 0,
                             (uint8_t *)mkb_pack, &mkb_packs))
-    return NULL;
+    return {};
 
-  p_mkb = (uint8_t *)malloc(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
+  std::vector<uint8_t> mkb(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
 
-  if (!p_mkb)
-    return NULL;
-
-  memcpy(p_mkb, &mkb_pack[16], CPRM_MKB_PACK_SIZE - 16);
+  memcpy(mkb.data(), &mkb_pack[16], CPRM_MKB_PACK_SIZE - 16);
 
   for (i = 1; i < mkb_packs; i++) {
     if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd, &dvdcss->css.i_agid, i,
-                              (uint8_t *)p_mkb + i * CPRM_MKB_PACK_SIZE - 16,
+                              mkb.data() + i * CPRM_MKB_PACK_SIZE - 16,
                               &mkb_packs)) {
-      free(p_mkb);
-      p_mkb = NULL;
-      break;
+      return {};
     }
   }
 
-  return p_mkb;
+  return mkb;
 }
 
 #define f(c, r) (((uint64_t)c << 32) | (uint64_t)r)
@@ -482,7 +482,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
     return -1;
   }
 
-  auto cpxm = std::shared_ptr<cpxm_s>(new cpxm_s());
+  auto cpxm = std::make_shared<cpxm_s>();
   if (!cpxm)
     return -1;
 
@@ -491,6 +491,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
   int ret = -1;
 
   uint8_t *p_mkb;
+  std::vector<uint8_t> cprm_mkb;
 
   switch (dvdcss->media_type) {
   case COPYRIGHT_PROTECTION_NONE:
@@ -511,11 +512,10 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
     break;
   case COPYRIGHT_PROTECTION_CPRM:
     if (cprm_set_id_media(dvdcss) == 0) {
-      p_mkb = cprm_get_mkb(dvdcss);
-      if (p_mkb) {
-        ret = process_mkb(p_mkb, cprm_device_keys.data(),
+      cprm_mkb = cprm_get_mkb(dvdcss);
+      if (!cprm_mkb.empty()) {
+        ret = process_mkb(cprm_mkb.data(), cprm_device_keys.data(),
                           cprm_device_keys.size(), &dvdcss->cpxm->media_key);
-        free(p_mkb);
         if (ret)
           break;
       }

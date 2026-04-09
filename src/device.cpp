@@ -27,12 +27,13 @@
  *****************************************************************************/
 #include "config.h"
 
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cerrno>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #ifdef HAVE_ERRNO_H
-#include <errno.h>
+#include <cerrno>
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -80,6 +81,15 @@
 #include <array>
 #include <new>
 #include <string_view>
+
+using std::free;
+using std::getenv;
+using std::malloc;
+using std::memcpy;
+using std::snprintf;
+using std::sprintf;
+using std::strerror;
+using std::strlen;
 
 #ifndef O_BINARY
 #define O_BINARY 0

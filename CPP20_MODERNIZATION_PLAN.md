@@ -57,7 +57,7 @@
 
 - [x] Replace global `cpxm_cache` linked list with `std::list<CpxmCacheEntry>` or `std::vector`
 - [ ] Replace `malloc`/`calloc`/`free` of `p_cpxm` state with `std::unique_ptr<cpxm_s>`
-- [ ] Replace MKB raw buffer `malloc` with `std::vector<uint8_t>`
+- [x] Replace MKB raw buffer `malloc` with `std::vector<uint8_t>`
 
 ### Device layer (`src/device.cpp`)
 
@@ -108,7 +108,7 @@
 
 - [ ] Remove `c` from `project()` languages in `meson.build` (keep only for public header install-test if desired)
 - [ ] Remove C-only compatibility shims (`MALLOC_CAST`, etc.) if any survive
-- [ ] Audit all `#include` directives: replace C headers (`<string.h>`, `<stdlib.h>`, `<stdio.h>`) with C++ equivalents (`<cstring>`, `<cstdlib>`, `<cstdio>`) in implementation files
+- [x] Audit all `#include` directives: replace C headers (`<string.h>`, `<stdlib.h>`, `<stdio.h>`) with C++ equivalents (`<cstring>`, `<cstdlib>`, `<cstdio>`) in implementation files
 - [ ] Run AddressSanitizer + UBSan on test/example binaries to validate no regressions
 - [x] Build and verify a standalone C consumer against the installed public headers (the `extern "C"` ABI contract)
 - [x] Cross-compile check with MinGW-w64 (`x86_64-w64-mingw32-g++`)

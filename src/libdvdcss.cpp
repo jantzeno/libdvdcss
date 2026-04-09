@@ -98,12 +98,13 @@
 #include "config.h"
 #include "libdvdcpxm.h"
 
+#include <cerrno>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
-#include <limits.h>
 #include <memory>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_PARAM_H
@@ -112,7 +113,6 @@
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
-#include <errno.h>
 #include <fcntl.h>
 
 #ifdef HAVE_UNISTD_H
@@ -131,6 +131,14 @@
 #include "device.h"
 #include "ioctl.h"
 #include "libdvdcss.h"
+
+using std::atoi;
+using std::getenv;
+using std::memcpy;
+using std::sprintf;
+using std::strcmp;
+using std::strlen;
+using std::strncmp;
 
 #if defined(HAVE_BROKEN_MKDIR) || defined(_WIN32)
 #include <direct.h>
