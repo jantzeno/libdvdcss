@@ -41,6 +41,8 @@
 #include <cstdint>
 #include <type_traits>
 
+namespace dvdcss {
+
 template <typename T>
 [[nodiscard]] inline T load_unaligned_value(const void *src) noexcept {
   static_assert(std::is_trivially_copyable_v<T>);
@@ -74,5 +76,7 @@ typedef cpxm_s *p_cpxm;
 /* cpxm uses the same css authentification method when using a usb dvd drive */
 [[nodiscard]] int cppm_set_id_album(dvdcss_t dvdcss);
 [[nodiscard]] int cprm_set_id_media(dvdcss_t dvdcss);
+
+} // namespace dvdcss
 
 #endif // CPXM_H

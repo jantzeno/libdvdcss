@@ -103,6 +103,8 @@ using std::memset;
 
 #define DVD_CHALLENGE_SIZE 10
 
+namespace dvdcss {
+
 #if defined(_WIN32)
 static inline HANDLE dvdcss_to_handle(dvdcss_fd_t fd) {
   return reinterpret_cast<HANDLE>(fd);
@@ -2117,3 +2119,5 @@ static void OS2InitSDC(struct OS2_ExecSCSICmd *p_sdc, int i_type) {
   p_sdc->cmd_length = 12;
 }
 #endif /* defined( __OS2__ ) */
+
+} // namespace dvdcss

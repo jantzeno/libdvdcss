@@ -4,7 +4,7 @@
 #include <utility>
 #include <variant>
 
-namespace dvdcss_compat {
+namespace dvdcss::detail {
 
 template <typename E> class unexpected {
 public:
@@ -53,6 +53,6 @@ private:
   std::variant<T, E> storage_;
 };
 
-} // namespace dvdcss_compat
+} // namespace dvdcss::detail
 
 #endif /* DVDCSS_EXPECTED_COMPAT_H */

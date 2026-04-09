@@ -49,6 +49,8 @@ struct iovec {
 
 #include "dvdcss/dvdcss.h"
 
+namespace dvdcss {
+
 class ScopedFd {
 public:
   enum class Kind {
@@ -129,5 +131,7 @@ int dvdcss_use_ioctls(dvdcss_t);
 void dvdcss_check_device(dvdcss_t);
 int dvdcss_open_device(dvdcss_t);
 int dvdcss_close_device(dvdcss_t);
+
+} // namespace dvdcss
 
 #endif /* DVDCSS_DEVICE_H */

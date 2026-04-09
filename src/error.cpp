@@ -36,6 +36,9 @@
 
 #include "libdvdcss.h"
 
+namespace dvdcss {
+namespace detail {
+
 static void write_stderr(std::string_view message) noexcept {
   const char *data = message.data();
   size_t remaining = message.size();
@@ -113,6 +116,8 @@ static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
   }
 }
 
+} // namespace detail
+
 /*****************************************************************************
  * Error messages
  *****************************************************************************/
@@ -120,7 +125,7 @@ void print_error(dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
-  vprint_error(dvdcss, psz_string, args);
+  detail::vprint_error(dvdcss, psz_string, args);
   va_end(args);
 }
 
@@ -131,6 +136,8 @@ void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
-  vprint_debug(dvdcss, psz_string, args);
+  detail::vprint_debug(dvdcss, psz_string, args);
   va_end(args);
 }
+
+} // namespace dvdcss

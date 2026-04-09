@@ -57,6 +57,8 @@
 
 using std::memcpy;
 
+namespace dvdcss {
+
 struct cpxm_cache_entry {
   cpxm_s cpxm;
   dev_t st_dev;
@@ -803,9 +805,13 @@ int dvdcpxm_close_internal(dvdcss_t dvdcss) noexcept {
   return 0;
 }
 
+} // namespace dvdcss
+
 /* CPXM exported prototype definitions */
 /* these methods should behave similarily but use dvdcpxm_decrypt instead of
  * unscramble, and remove any unnecessary code */
+
+using namespace dvdcss;
 
 /* aliased dvdcpxm_close to not break ABI */
 int dvdcpxm_close(dvdcss_t dvdcss) { return dvdcss_close(dvdcss); }

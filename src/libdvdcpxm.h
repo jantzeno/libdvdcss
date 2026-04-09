@@ -38,6 +38,8 @@
 #include "dvdcss/dvdcss.h"
 #include <stdint.h>
 
+namespace dvdcss {
+
 inline constexpr int COPYRIGHT_PROTECTION_NONE = 0;
 inline constexpr int COPYRIGHT_PROTECTION_CPPM = 1;
 inline constexpr int COPYRIGHT_PROTECTION_CPRM = 2;
@@ -80,5 +82,7 @@ typedef struct {
 
 /* used to clear dvdcpxm structures, including cache */
 int dvdcpxm_close_internal(dvdcss_t) noexcept;
+
+} // namespace dvdcss
 
 #endif

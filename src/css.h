@@ -35,6 +35,8 @@
 
 #include "dvdcss/dvdcss.h"
 
+namespace dvdcss {
+
 inline constexpr int DVD_KEY_SIZE = 5;
 using dvdcss_key = std::array<uint8_t, DVD_KEY_SIZE>;
 
@@ -61,5 +63,7 @@ int dvdcss_unscramble(const dvdcss_key &, std::span<uint8_t>);
 /* exported for USB authentification in CPXM */
 [[nodiscard]] int GetBusKey(dvdcss_t);
 [[nodiscard]] int GetASF(dvdcss_t);
+
+} // namespace dvdcss
 
 #endif /* DVDCSS_CSS_H */

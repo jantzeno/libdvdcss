@@ -40,6 +40,8 @@
 #include "device.h"
 #include "dvdcss/dvdcss.h"
 
+namespace dvdcss {
+
 /*****************************************************************************
  * libdvdcss method: used like init flags
  *****************************************************************************/
@@ -48,6 +50,12 @@ enum class dvdcss_method {
   disc,
   title,
 };
+
+void print_error(dvdcss_t, const char *, ...) noexcept;
+void print_debug(const dvdcss_t, const char *, ...) noexcept;
+
+} // namespace dvdcss
+
 /*****************************************************************************
  * The libdvdcss structure
  *****************************************************************************/
@@ -58,18 +66,18 @@ struct dvdcss_s {
 
   /* File descriptor */
   std::string psz_device;
-  ScopedFd i_fd;
+  dvdcss::ScopedFd i_fd;
   int i_pos;
 
   /* File handling */
-  DeviceStrategy device_strategy;
+  dvdcss::DeviceStrategy device_strategy;
 
   /* Decryption stuff */
-  dvdcss_method i_method;
-  struct css css;
+  dvdcss::dvdcss_method i_method;
+  dvdcss::css css;
   int b_ioctls;
   int b_scrambled;
-  std::vector<dvd_title> p_titles;
+  std::vector<dvdcss::dvd_title> p_titles;
 
   /* Key cache directory */
   std::filesystem::path psz_cachefile;
@@ -80,7 +88,7 @@ struct dvdcss_s {
   int b_debug;
 
   /* struct to be used only internally in CPXM */
-  std::unique_ptr<cpxm_s> cpxm;
+  std::unique_ptr<dvdcss::cpxm_s> cpxm;
   /* to check if this was cached, or if it was copied from cache */
   /* will use to check if disc is being closed or if it's just a file */
   int cpxm_was_cached;
@@ -101,11 +109,5 @@ struct dvdcss_s {
   int cleanup_result = 0;
   bool cleanup_done = false;
 };
-
-/*****************************************************************************
- * Functions used across the library
- *****************************************************************************/
-void print_error(dvdcss_t, const char *, ...) noexcept;
-void print_debug(const dvdcss_t, const char *, ...) noexcept;
 
 #endif /* DVDCSS_LIBDVDCSS_H */

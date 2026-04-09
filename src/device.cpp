@@ -100,6 +100,8 @@ using std::sprintf;
 using std::strerror;
 using std::strlen;
 
+namespace dvdcss {
+
 ScopedFd::~ScopedFd() noexcept { static_cast<void>(close()); }
 
 ScopedFd::ScopedFd(ScopedFd &&other) noexcept
@@ -896,3 +898,5 @@ static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   return i_blocks_read;
 }
 #endif /* defined( _WIN32 ) */
+
+} // namespace dvdcss

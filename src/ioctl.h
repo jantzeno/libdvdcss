@@ -28,6 +28,9 @@
 #include <stdint.h>
 
 #include "common.h"
+
+namespace dvdcss {
+
 [[nodiscard]] int ioctl_ReadCopyright(dvdcss_fd_t, int, int *);
 [[nodiscard]] int ioctl_ReadDiscKey(dvdcss_fd_t, const int *,
                                     std::span<uint8_t>);
@@ -255,5 +258,7 @@ struct OS2_ExecSCSICmd {
 #pragma pack()
 
 #endif /* defined( __OS2__ ) */
+
+} // namespace dvdcss
 
 #endif /* DVDCSS_IOCTL_H */

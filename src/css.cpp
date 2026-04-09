@@ -62,6 +62,8 @@ using std::snprintf;
 using std::sprintf;
 using std::sscanf;
 
+namespace dvdcss {
+
 inline constexpr int kPszKeySize = DVD_KEY_SIZE * 3;
 
 /*****************************************************************************
@@ -98,7 +100,7 @@ enum class title_key_read_error {
 };
 
 using title_key_read_result =
-    dvdcss_compat::expected<std::optional<dvdcss_key>, title_key_read_error>;
+    detail::expected<std::optional<dvdcss_key>, title_key_read_error>;
 
 static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t, int);
 
@@ -1013,7 +1015,7 @@ static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss, int i_pos) 
 
   /* We need to authenticate again every time to get a new session key. */
   if (GetBusKey(dvdcss) < 0) {
-    return dvdcss_compat::unexpected{
+    return detail::unexpected{
         title_key_read_error::authentication_failed};
   }
 
@@ -1027,17 +1029,17 @@ static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss, int i_pos) 
   /* Test ASF, it will be reset to 0 if we got a Region error. */
   switch (GetASF(dvdcss)) {
   case -1:
-    return dvdcss_compat::unexpected{
+    return detail::unexpected{
         title_key_read_error::authentication_flag_unavailable};
   case 0:
     if (read_failed) {
-      return dvdcss_compat::unexpected{
+      return detail::unexpected{
           title_key_read_error::authentication_flag_lost};
     }
     break;
   case 1:
     if (read_failed) {
-      return dvdcss_compat::unexpected{title_key_read_error::read_failed};
+      return detail::unexpected{title_key_read_error::read_failed};
     }
     break;
   }
@@ -1628,3 +1630,5 @@ static int AttackPadding( const uint8_t p_sec[ DVDCSS_BLOCK_SIZE ] )
     return 0;
 }
 #endif /* 0 */
+
+} // namespace dvdcss

@@ -39,6 +39,8 @@
 #include <span>
 #include <stddef.h>
 
+namespace dvdcss {
+
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for cppm
  *****************************************************************************/
@@ -93,3 +95,5 @@ int cprm_set_id_media(dvdcss_t dvdcss) {
 
   return 0;
 }
+
+} // namespace dvdcss

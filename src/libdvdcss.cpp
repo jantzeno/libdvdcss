@@ -143,10 +143,14 @@ using std::strcmp;
 using std::strlen;
 using std::strncmp;
 
+using namespace dvdcss;
+
 #if defined(HAVE_BROKEN_MKDIR) || defined(_WIN32)
 #include <direct.h>
 #define mkdir(a, b) _mkdir(a)
 #endif
+
+namespace dvdcss::detail {
 
 inline constexpr char kCacheTagName[] = "CACHEDIR.TAG";
 inline constexpr int kStringKeySize = DVD_KEY_SIZE * 2;
@@ -185,6 +189,8 @@ static int create_directories_if_needed(const std::filesystem::path &path) {
 static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
                                    dvdcss_stream_cb *p_stream_cb);
 
+} // namespace dvdcss::detail
+
 dvdcss_s::~dvdcss_s() noexcept { static_cast<void>(cleanup()); }
 
 int dvdcss_s::cleanup() noexcept {
@@ -201,6 +207,8 @@ int dvdcss_s::cleanup() noexcept {
   cleanup_result = dvdcss_close_device(this);
   return cleanup_result;
 }
+
+namespace dvdcss::detail {
 
 static void set_verbosity(dvdcss_t dvdcss) {
   const char *psz_verbose = getenv("DVDCSS_VERBOSE");
@@ -466,6 +474,8 @@ static void init_cache(dvdcss_t dvdcss) {
   create_cache_subdir(dvdcss);
 }
 
+} // namespace dvdcss::detail
+
 /**
  * \brief Open a DVD device or directory and return a dvdcss instance.
  *
@@ -479,7 +489,7 @@ static void init_cache(dvdcss_t dvdcss) {
  * and when possible, the disc key is retrieved.
  */
 extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
-  return dvdcss_open_common(psz_target, NULL, NULL);
+  return detail::dvdcss_open_common(psz_target, NULL, NULL);
 }
 
 /**
@@ -493,8 +503,10 @@ extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
  */
 extern "C" dvdcss_t dvdcss_open_stream(void *p_stream,
                                        dvdcss_stream_cb *p_stream_cb) {
-  return dvdcss_open_common(NULL, p_stream, p_stream_cb);
+  return detail::dvdcss_open_common(NULL, p_stream, p_stream_cb);
 }
+
+namespace dvdcss::detail {
 
 static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
                                    dvdcss_stream_cb *p_stream_cb) {
@@ -581,6 +593,8 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
 error:
   return NULL;
 }
+
+} // namespace dvdcss::detail
 
 /**
  * \brief Return a string containing the last error that occurred in the
