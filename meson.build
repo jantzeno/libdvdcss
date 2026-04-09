@@ -1,8 +1,9 @@
-project('libdvdcss', 'c',
+project('libdvdcss', 'c', 'cpp',
     version: '1.6.0',
     meson_version: '>= 0.60.0',
     default_options: ['buildtype=debugoptimized',
                       'c_std=c17',
+                      'cpp_std=c++17',
                       'default_library=both',
                       'warning_level=2'])
 
@@ -118,6 +119,7 @@ endif
 cdata.set('SUPPORT_ATTRIBUTE_VISIBILITY_DEFAULT', cc.has_function_attribute('visibility:default'))
 
 add_project_arguments(test_args, language: 'c')
+add_project_arguments(test_args, language: 'cpp')
 
 # Generate config.h
 configure_file(output: 'config.h', configuration: cdata)

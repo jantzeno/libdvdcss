@@ -1,0 +1,436 @@
+# libdvdcss C-to-C++ Conversion Plan
+
+## Scope
+
+This plan covers an incremental, file-by-file migration of the tracked source tree from C to C++ while preserving the installed C ABI in `src/dvdcss/*.h`. The objective is to end with a C++ implementation, a stable C-facing API, and a build that can tolerate mixed `.c` and `.cpp` translation units during the transition.
+
+This plan does not include generated files under `builddir/`; those should be regenerated as part of each migration step.
+
+## Constraints And Non-Negotiables
+
+- [ ] Keep the public ABI C-compatible for the full migration. `src/dvdcss/dvdcss.h` and `src/dvdcss/dvdcpxm.h` already expose `extern "C"` guards and should remain installable from C projects.
+- [ ] Convert incrementally. Do not rename every file in one change; mixed C/C++ builds will make regressions easier to isolate.
+- [ ] Preserve platform support. `ioctl.c`, `device.c`, and the Windows/OS-specific blocks in headers are the highest portability risk.
+- [ ] Avoid changing on-disk cache formats, ioctl behavior, or decryption logic while doing mechanical language conversion.
+- [ ] Prefer a C-like C++ style first. Introduce RAII and stronger typing only after the code compiles cleanly as C++.
+
+## Global Preparation
+
+### Phase 0: Build System And Policy
+
+- [x] Update `meson.build` to declare both `c` and `cpp` project languages during the transition.
+- [x] Add a project-wide C++ standard, preferably `cpp_std=c++17` or newer, without changing the existing `c_std=c17` until all remaining `.c` files are gone.
+- [x] Ensure common compiler arguments are applied per language instead of assuming C-only compilation.
+- [x] Keep symbol visibility and install rules unchanged.
+- [ ] Add a CI/build matrix that exercises both GCC and Clang in mixed-language mode if available.
+
+Recommended first Meson target state:
+
+- [x] Top-level project languages: `['c', 'cpp']`
+- [x] Standards: keep `c17`, add `c++17`
+- [x] Mixed object list: allow `.c` and `.cpp` in the same `library()` target
+
+### Phase 1: Cross-Cutting Compatibility Fixes
+
+Apply these before renaming any implementation files:
+
+- [ ] Audit all internal headers for C++ compatibility.
+- [ ] Replace C constructs that are invalid in C++:
+   - [ ] implicit `void *` conversions
+   - [ ] designated initializers that are not portable across the chosen C++ standard
+   - [ ] identifiers that collide with C++ keywords or stricter type rules
+   - [ ] macro patterns that rely on C-only behavior
+- [ ] Ensure every internal header is self-contained under C++ compilation.
+- [ ] Keep exported declarations inside `extern "C"` only where the symbol is part of the public ABI.
+- [ ] Decide whether internal functions remain C linkage or move to normal C++ linkage. The simplest path is to keep only the public API in `extern "C"`.
+
+## File-By-File Order
+
+The order below is optimized for dependency control and risk containment, not filename order.
+
+### 1. Build And Installed Header Layer
+
+#### `meson.build`
+
+Purpose:
+Make mixed C/C++ compilation possible before any file renames.
+
+Work:
+
+- [x] Add `cpp` as a project language.
+- [x] Add a `cpp_std` default option.
+- [x] Split language-specific arguments where needed.
+
+Exit criteria:
+
+- [x] The project configures successfully with both C and C++ compilers enabled.
+- [x] A no-op build still succeeds before source conversion starts.
+
+#### `src/meson.build`
+
+Purpose:
+Allow source-by-source migration from `.c` to `.cpp`.
+
+Work:
+
+- [x] Rename entries in `dvdcss_src` one file at a time as files are converted.
+- [x] Keep the library target name, install settings, and pkg-config generation unchanged.
+
+Exit criteria:
+
+- [x] The source list accurately reflects a mixed `.c` and `.cpp` set throughout the migration.
+
+#### `test/meson.build`
+
+Purpose:
+Keep example/test programs building during the mixed-language period.
+
+Work:
+
+- [ ] Update source filenames when test files are renamed.
+- [ ] Verify any C++-only linker requirements are picked up automatically by Meson.
+
+Exit criteria:
+
+- [ ] Both test executables still link after each relevant conversion.
+
+#### `src/dvdcss/dvdcss.h`
+
+Purpose:
+Preserve the public C API while making the header safe for C++ consumers.
+
+Work:
+
+- [ ] Keep `extern "C"` guards exactly around the exported C API.
+- [ ] Verify callback signatures remain C-compatible.
+- [ ] Check macro exports and visibility attributes under C++ compilers.
+
+Exit criteria:
+
+- [ ] The header compiles as both C and C++.
+- [ ] Existing C clients need no source changes.
+
+#### `src/dvdcss/dvdcpxm.h`
+
+Purpose:
+Do the same ABI-preservation pass for the CPXM public API.
+
+Work:
+
+- [ ] Confirm exported declarations remain C-compatible.
+- [ ] Validate integer types and include order under C++.
+
+Exit criteria:
+
+- [ ] The header compiles cleanly in both languages.
+
+#### `src/dvdcss/version.h.in`
+
+Purpose:
+Low risk, but verify generation still works unchanged when the project becomes mixed-language.
+
+Work:
+
+- [ ] No substantive API changes expected.
+- [ ] Only touch if C++ compilation reveals macro or include-order issues.
+
+### 2. Internal Header Layer
+
+Convert headers before implementations that include them.
+
+#### `src/common.h`
+
+Why first:
+It defines platform-dependent type and function remaps that many implementation files inherit.
+
+Work:
+
+- [ ] Verify the Windows `off_t`, `ssize_t`, and function remapping macros behave under C++.
+- [ ] Remove any C-style assumptions around typedef redefinition if they fail in C++.
+
+Risk:
+High on Windows, low elsewhere.
+
+#### `src/bswap.h`
+
+Why early:
+Byte-swap helpers are likely to be included by CPXM code and may contain macro tricks that need stricter typing.
+
+Work:
+
+- [ ] Ensure macros or inline helpers are valid in C++.
+- [ ] Prefer `static inline` or `constexpr` only if that does not change ABI or behavior.
+
+#### `src/css.h`
+
+Why early:
+Defines shared internal structures used by the core library.
+
+Work:
+
+- [ ] Keep POD layout stable.
+- [ ] Make typedefs and forward declarations C++-clean.
+
+#### `src/device.h`
+
+Why early:
+Declares `struct iovec` fallback logic and device entry points.
+
+Work:
+
+- [ ] Validate the fallback `iovec` definition under C++.
+- [ ] Ensure include ordering and `size_t` visibility stay correct.
+
+Risk:
+Medium because platform headers vary.
+
+#### `src/ioctl.h`
+
+Why early:
+Contains the densest macro and platform-API surface in the repo.
+
+Work:
+
+- [ ] Audit packed structs, bitfields, zero-length arrays, and Windows typedefs for C++ compiler acceptance.
+- [ ] Replace C-only allocation or cast assumptions where necessary.
+- [ ] Keep binary layouts unchanged.
+
+Risk:
+Very high across Windows, BSD, Solaris, QNX, and OS/2 code paths.
+
+#### `src/cpxm.h`
+
+Why early:
+Shares CPXM state and macros with both the public and private implementation layers.
+
+Work:
+
+- [ ] Make the `READ64_BE` macro safe under C++.
+- [ ] Ensure `p_cpxm` and related typedefs stay plain-data friendly.
+
+#### `src/libdvdcpxm.h`
+
+Why early:
+Defines CPXM internal types and constants used by newer code.
+
+Work:
+
+- [ ] Validate bitfields, nested structs, and fixed-width integer use under C++.
+- [ ] Confirm the public include chain remains valid when this header is compiled from a `.cpp` file.
+
+#### `src/libdvdcss.h`
+
+Why late in header phase:
+It aggregates nearly every internal dependency.
+
+Work:
+
+- [ ] Keep `struct dvdcss_s` layout stable while the codebase is mixed-language.
+- [ ] Decide whether function pointers stay raw C-style or receive explicit casts/wrappers in C++ implementation files.
+- [ ] Avoid introducing constructors, references, or non-POD members until all C callers are isolated behind the public API.
+
+Risk:
+High because this struct is central to the whole library.
+
+### 3. Lowest-Risk Implementation Files
+
+Start with files that are isolated or mostly algorithmic. Rename each file from `.c` to `.cpp`, fix compile errors, rebuild, and run tests before moving on.
+
+#### `src/error.c` -> `src/error.cpp`
+
+Why first:
+Usually self-contained and a good probe for variadic function compatibility under C++.
+
+Focus:
+
+- [x] Variadic formatting and const-correctness.
+- [x] Any implicit string-literal or pointer conversions.
+
+#### `src/cpxm.c` -> `src/cpxm.cpp`
+
+Why next:
+Algorithm-heavy code with fewer OS-entry-point dependencies than device access.
+
+Focus:
+
+- [ ] Cast cleanup.
+- [ ] Fixed-width integer arithmetic.
+- [ ] Macro-heavy byte-order helpers.
+
+#### `src/libdvdcpxm.c` -> `src/libdvdcpxm.cpp`
+
+Why next:
+Keeps the CPXM subsystem coherent before touching the main DVD CSS path.
+
+Focus:
+
+- [ ] Interaction with `p_cpxm` state.
+- [ ] Allocation and cleanup patterns that may want RAII later.
+
+### 4. Core CSS Logic
+
+#### `src/css.c` -> `src/css.cpp`
+
+Why here:
+Central algorithmic code, but less OS-specific than device and ioctl paths.
+
+Focus:
+
+- [ ] Table lookups and integer conversions.
+- [ ] Any `void *` casts and legacy macros.
+- [ ] Preservation of exact decryption behavior.
+
+#### `src/csstables.h`
+
+Why with `css.cpp`:
+It likely exists only to support CSS lookup-table logic.
+
+Focus:
+
+- [ ] Ensure constant table declarations remain usable from C++.
+- [ ] Prefer `static const` or `constexpr` only if object layout and linkage remain compatible with the current usage.
+
+### 5. Device And I/O Layer
+
+#### `src/device.c` -> `src/device.cpp`
+
+Why after CSS logic:
+This file bridges library state to platform I/O callbacks and file descriptors.
+
+Focus:
+
+- [ ] Function-pointer assignments in `dvdcss_s`.
+- [ ] Raw buffer allocation and ownership.
+- [ ] Windows-specific `readv` emulation details.
+
+Risk:
+High because it sits between core logic and all operating-system access.
+
+#### `src/ioctl.c` -> `src/ioctl.cpp`
+
+Why near the end:
+This is the most platform-fragile implementation file and should be converted only after header cleanup and lower-risk files are stable.
+
+Focus:
+
+- [ ] Platform-specific ioctl request structs.
+- [ ] Manual buffer casting.
+- [ ] Compiler acceptance of system-header interactions across supported OSes.
+
+Risk:
+Highest single-file risk in the repository.
+
+### 6. Top-Level Library Orchestration
+
+#### `src/libdvdcss.c` -> `src/libdvdcss.cpp`
+
+Why near last:
+It owns process environment parsing, cache-path logic, device opening, and the public API entry points.
+
+Focus:
+
+- [ ] Public entry points must preserve C linkage and signatures.
+- [ ] Memory allocation, ownership, and cleanup should stay behaviorally identical before any RAII refactor.
+- [ ] Environment variable and filesystem logic must remain portable.
+
+Recommended rule for this file:
+Do not redesign internals during the conversion rename. First make it compile as C++ with minimal changes, then consider cleanup in a later pass.
+
+### 7. Tests And Example Programs
+
+#### `test/csstest.c` -> `test/csstest.cpp`
+
+Why now:
+It depends only on the public API and should validate that C-callable headers still work when the consumer is C++.
+
+Focus:
+
+- [ ] Replace legacy C-style casts if needed.
+- [ ] Keep behavior identical.
+
+#### `test/dvd_region.c` -> `test/dvd_region.cpp`
+
+Why last:
+It directly includes `ioctl.c`, which makes it the most awkward test-side migration target.
+
+Focus:
+
+- [ ] Decide whether to keep source inclusion of `ioctl.c` or refactor the needed helpers into a reusable internal unit first.
+- [ ] Verify C++ compilation does not create duplicate-definition or linkage surprises.
+
+Risk:
+High because it couples directly to internal implementation details.
+
+## Suggested Commit Sequence
+
+Use one focused change per step.
+
+- [x] Mixed-language Meson enablement.
+- [ ] Public-header C++ compatibility pass.
+- [ ] Internal-header C++ compatibility pass.
+- [x] `error.c` conversion.
+- [ ] `cpxm.c` conversion.
+- [ ] `libdvdcpxm.c` conversion.
+- [ ] `css.c` plus `csstables.h` cleanup.
+- [ ] `device.c` conversion.
+- [ ] `ioctl.c` conversion.
+- [ ] `libdvdcss.c` conversion.
+- [ ] `csstest.c` conversion.
+- [ ] `dvd_region.c` conversion and possible test refactor.
+- [ ] Final cleanup: remove leftover C-only build settings and switch the project fully to C++ if no `.c` sources remain.
+
+## Definition Of Done Per File
+
+Each file conversion is complete only when all of the following are true:
+
+- [ ] The file has been renamed to `.cpp` where applicable.
+- [ ] The library configures and builds successfully.
+- [ ] No new compiler warnings of consequence are introduced for the converted file.
+- [ ] Relevant tests or example programs still build.
+- [ ] Public installed headers remain consumable from a C compiler.
+
+## Validation Strategy
+
+For every step in the sequence:
+
+- [ ] Reconfigure Meson after filename changes.
+- [ ] Rebuild from a clean build directory at least for milestone steps.
+- [ ] Run the example/test binaries that are enabled in the current build.
+- [ ] Build a tiny external C consumer against the installed or uninstalled headers to verify ABI and header compatibility.
+
+Recommended milestone validations:
+
+- [ ] After public-header pass.
+- [ ] After internal-header pass.
+- [ ] After each of the high-risk files: `device`, `ioctl`, and `libdvdcss`.
+- [ ] After the final test conversion.
+
+## Known Hotspots To Watch
+
+- [ ] `src/ioctl.h` and `src/ioctl.c`: system APIs, packed data, bitfields, and platform-specific macros.
+- [ ] `src/libdvdcss.h`: central state struct shared across almost every module.
+- [ ] `src/common.h`: Windows compatibility typedefs and macro remapping.
+- [ ] `test/dvd_region.c`: includes an implementation file directly.
+- [ ] Any allocation site that currently relies on implicit `malloc` to typed-pointer conversion.
+
+## Follow-Up Cleanup After Full Conversion
+
+Once every implementation file is in C++ and stable:
+
+- [ ] Decide whether to keep the internal codebase mostly C-like or introduce selective C++ cleanup.
+- [ ] If cleanup is desired, do it in a second phase:
+   - [ ] replace raw allocations with RAII where low-risk
+   - [ ] reduce macro usage in favor of typed helpers
+   - [ ] narrow linkage of internal helpers
+   - [ ] improve const-correctness
+- [ ] Keep the public headers C-first even if internals become more idiomatic C++.
+
+## Recommended First Execution Slice
+
+If starting immediately, the safest first slice is:
+
+- [x] Update `meson.build` and `src/meson.build` for mixed-language support.
+- [x] Make `src/common.h`, `src/device.h`, `src/ioctl.h`, `src/css.h`, `src/cpxm.h`, `src/libdvdcpxm.h`, and `src/libdvdcss.h` compile as C++ headers.
+- [x] Convert `src/error.c` to `src/error.cpp` and verify the build.
+
+That slice will reveal most of the structural C++ issues without forcing a high-risk port of the device and ioctl layers too early.

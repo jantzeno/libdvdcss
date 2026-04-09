@@ -1,5 +1,5 @@
 /*****************************************************************************
- * error.c: error management functions
+ * error.cpp: error management functions
  *****************************************************************************
  * Copyright (C) 1998-2002 VideoLAN
  *
@@ -20,47 +20,42 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *****************************************************************************/
 
-#include <stdarg.h>
-#include <stdio.h>
+#include <cstdarg>
+#include <cstdio>
 
 #include "libdvdcss.h"
 
-static void print_message( const char *prefix, const char *psz_string,
-                           va_list args )
-{
-    fprintf( stderr, "libdvdcss %s: ", prefix );
-    vfprintf( stderr, psz_string, args );
-    fprintf( stderr, "\n" );
+static void print_message(const char *prefix, const char *psz_string,
+                          va_list args) {
+  std::fprintf(stderr, "libdvdcss %s: ", prefix);
+  std::vfprintf(stderr, psz_string, args);
+  std::fprintf(stderr, "\n");
 }
 
 /*****************************************************************************
  * Error messages
  *****************************************************************************/
-void print_error( dvdcss_t dvdcss, const char *psz_string, ... )
-{
-    if( dvdcss->b_errors )
-    {
-        va_list args;
+void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
+  if (dvdcss->b_errors) {
+    va_list args;
 
-        va_start( args, psz_string );
-        print_message("error", psz_string, args);
-        va_end( args );
-    }
+    va_start(args, psz_string);
+    print_message("error", psz_string, args);
+    va_end(args);
+  }
 
-    dvdcss->psz_error = psz_string;
+  dvdcss->psz_error = psz_string;
 }
 
 /*****************************************************************************
  * Debug messages
  *****************************************************************************/
-void print_debug( const dvdcss_t dvdcss, const char *psz_string, ... )
-{
-    if( dvdcss->b_debug )
-    {
-        va_list args;
+void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) {
+  if (dvdcss->b_debug) {
+    va_list args;
 
-        va_start( args, psz_string );
-        print_message("debug", psz_string, args );
-        va_end( args );
-    }
+    va_start(args, psz_string);
+    print_message("debug", psz_string, args);
+    va_end(args);
+  }
 }
