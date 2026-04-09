@@ -5,7 +5,7 @@ dvdcss_src = files(
     'device.c',
     'error.cpp',
     'ioctl.c',
-    'libdvdcpxm.c',
+    'libdvdcpxm.cpp',
     'libdvdcss.c',
 )
 

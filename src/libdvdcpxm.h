@@ -79,6 +79,12 @@ typedef struct {
 } cprm_mkb_t;
 
 /* used to clear dvdcpxm structures, including cache */
+#ifdef __cplusplus
+extern "C" {
+#endif
 int dvdcpxm_close_internal(dvdcss_t);
+#ifdef __cplusplus
+}
+#endif
 
 #endif

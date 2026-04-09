@@ -1,5 +1,5 @@
 /**
- * \file libdvdcpxm.c
+ * \file libdvdcpxm.cpp
  * \author Maxim V.Anisiutkin <Maxim.Anisiutkin@gmail.com>
  * \author Saifelden Ismail <saifeldenmi@gmail.com>
  *
@@ -707,7 +707,7 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer, int flags) {
                               cpxm->media_key);
   case COPYRIGHT_PROTECTION_CPRM: {
     /* return early if there is no encryption to avoid allocating 2kb */
-    if (!mpeg2_check_pes_scrambling_control(p_buffer))
+    if (!mpeg2_check_pes_scrambling_control((uint8_t *)p_buffer))
       return cprm_decrypt_block((uint8_t *)p_buffer, flags, cpxm->vr_k_t,
                                 cpxm->apstb);
 
@@ -753,7 +753,7 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer, int flags) {
 }
 
 /* this function is used internally */
-int dvdcpxm_close_internal(dvdcss_t dvdcss) {
+extern "C" int dvdcpxm_close_internal(dvdcss_t dvdcss) {
   if (dvdcss->cpxm)
     free(dvdcss->cpxm);
 

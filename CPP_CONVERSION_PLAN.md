@@ -339,8 +339,14 @@ Keeps the CPXM subsystem coherent before touching the main DVD CSS path.
 
 Focus:
 
-- [ ] Interaction with `p_cpxm` state.
-- [ ] Allocation and cleanup patterns that may want RAII later.
+- [x] Interaction with `p_cpxm` state.
+- [x] Allocation and cleanup patterns that may want RAII later.
+
+Validation note:
+
+- [x] The implementation now lives in `src/libdvdcpxm.cpp`; after the earlier header and cast cleanup work, the only source-level C++ fix needed was an explicit cast when probing a `void *` buffer through `mpeg2_check_pes_scrambling_control()`.
+- [x] The existing `p_cpxm` ownership and cache-management logic was preserved as-is during the rename: allocations still use the current raw `calloc` and `malloc` paths, cleanup still flows through `dvdcpxm_close_internal()`, and no RAII or ownership redesign was introduced during this mechanical conversion step.
+- [x] A narrow private C-linkage seam now covers `dvdcpxm_close_internal()` so the remaining C implementation files still bind correctly, while the exported CPXM API continues to use the public `dvdcpxm.h` declarations. Meson was reconfigured for both build directories, both library builds succeeded, and a tiny external-style C consumer still compiled cleanly against `dvdcss.h` and `dvdcpxm.h`.
 
 ### 4. Core CSS Logic
 
@@ -445,7 +451,7 @@ Use one focused change per step.
 - [x] Internal-header C++ compatibility pass.
 - [x] `error.c` conversion.
 - [x] `cpxm.c` conversion.
-- [ ] `libdvdcpxm.c` conversion.
+- [x] `libdvdcpxm.c` conversion.
 - [ ] `css.c` plus `csstables.h` cleanup.
 - [ ] `device.c` conversion.
 - [ ] `ioctl.c` conversion.
