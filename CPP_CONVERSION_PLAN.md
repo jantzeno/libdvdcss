@@ -288,12 +288,18 @@ It aggregates nearly every internal dependency.
 
 Work:
 
-- [ ] Keep `struct dvdcss_s` layout stable while the codebase is mixed-language.
-- [ ] Decide whether function pointers stay raw C-style or receive explicit casts/wrappers in C++ implementation files.
-- [ ] Avoid introducing constructors, references, or non-POD members until all C callers are isolated behind the public API.
+- [x] Keep `struct dvdcss_s` layout stable while the codebase is mixed-language.
+- [x] Decide whether function pointers stay raw C-style or receive explicit casts/wrappers in C++ implementation files.
+- [x] Avoid introducing constructors, references, or non-POD members until all C callers are isolated behind the public API.
 
 Risk:
 High because this struct is central to the whole library.
+
+Validation note:
+
+- [x] `dvdcss_s` compiled cleanly as a trivial standard-layout type in C++, and focused offset checks confirmed that the core state ordering remains intact across the file-access, CSS, CPXM, and stream-callback portions of the struct.
+- [x] The internal `pf_seek`, `pf_read`, and `pf_readv` members keep their existing raw C-style function-pointer types; C++ validation confirmed that same-signature helper functions still assign directly, so wrapper layers are not required yet during the mixed-language phase.
+- [x] C++ consumers of `src/libdvdcss.h` continue to see the intended private logging policy through the `print_error` and `print_debug` macro remap, and the header compiled cleanly both after `src/dvdcss/dvdcss.h` and under a MinGW-w64 C++ check of the Win32-tail layout path.
 
 ### 3. Lowest-Risk Implementation Files
 
@@ -430,7 +436,7 @@ Use one focused change per step.
 
 - [x] Mixed-language Meson enablement.
 - [x] Public-header C++ compatibility pass.
-- [ ] Internal-header C++ compatibility pass.
+- [x] Internal-header C++ compatibility pass.
 - [x] `error.c` conversion.
 - [ ] `cpxm.c` conversion.
 - [ ] `libdvdcpxm.c` conversion.
