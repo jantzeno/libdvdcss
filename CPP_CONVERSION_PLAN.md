@@ -132,12 +132,18 @@ Do the same ABI-preservation pass for the CPXM public API.
 
 Work:
 
-- [ ] Confirm exported declarations remain C-compatible.
-- [ ] Validate integer types and include order under C++.
+- [x] Confirm exported declarations remain C-compatible.
+- [x] Validate integer types and include order under C++.
 
 Exit criteria:
 
-- [ ] The header compiles cleanly in both languages.
+- [x] The header compiles cleanly in both languages.
+
+Validation note:
+
+- [x] `src/dvdcss/dvdcpxm.h` keeps only the exported CPXM API functions inside `extern "C"`, while public constants and fixed-width integer usage remain outside the linkage block.
+- [x] Native C and C++ consumer snippets compiled successfully when including only `src/dvdcss/dvdcpxm.h`, confirming that `uint8_t`, `dvdcss_t`, and `LIBDVDCSS_EXPORT` arrive through the public include chain without extra include ordering requirements.
+- [x] C++ include-order checks passed with both `dvdcpxm.h` before `dvdcss.h` and `dvdcss.h` before `dvdcpxm.h`, and Win32-target syntax checks passed under `x86_64-w64-mingw32-g++` with both `LIBDVDCSS_IMPORTS` and `LIBDVDCSS_EXPORTS` defined.
 
 #### `src/dvdcss/version.h.in`
 
@@ -381,7 +387,7 @@ High because it couples directly to internal implementation details.
 Use one focused change per step.
 
 - [x] Mixed-language Meson enablement.
-- [ ] Public-header C++ compatibility pass.
+- [x] Public-header C++ compatibility pass.
 - [ ] Internal-header C++ compatibility pass.
 - [x] `error.c` conversion.
 - [ ] `cpxm.c` conversion.
