@@ -30,6 +30,9 @@
 #include <stdlib.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 int ioctl_ReadCopyright(int, int, int *);
 int ioctl_ReadDiscKey(int, const int *, uint8_t *);
 int ioctl_ReadTitleKey(int, const int *, int, uint8_t *);
@@ -45,6 +48,9 @@ int ioctl_ReportRPC(int, int *, int *, int *);
 /* Special Ioctl functions for cpxm decryption */
 int ioctl_ReadCPRMMKBPack(int, int *, int, uint8_t *, int *);
 int ioctl_ReadCPRMMediaId(int, int *, uint8_t *);
+#ifdef __cplusplus
+}
+#endif
 
 #define DVD_DISCKEY_SIZE 2048
 

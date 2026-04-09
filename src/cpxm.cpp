@@ -1,5 +1,5 @@
 /**
- * \file cpxm.c
+ * \file cpxm.cpp
  * \author Maxim V.Anisiutkin <Maxim.Anisiutkin@gmail.com>
  * \author Saifelden Ismail <saifeldenmi@gmail.com>
  *
@@ -41,7 +41,7 @@
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for cppm
  *****************************************************************************/
-int cppm_set_id_album(dvdcss_t dvdcss) {
+extern "C" int cppm_set_id_album(dvdcss_t dvdcss) {
   unsigned char p_buffer[DVD_DISCKEY_SIZE];
 
   if (GetBusKey(dvdcss) < 0) {
@@ -75,7 +75,7 @@ int cppm_set_id_album(dvdcss_t dvdcss) {
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for CPRM
  *****************************************************************************/
-int cprm_set_id_media(dvdcss_t dvdcss) {
+extern "C" int cprm_set_id_media(dvdcss_t dvdcss) {
   uint8_t p_buffer[CPRM_MEDIA_ID_SIZE + 4];
 
   if (GetBusKey(dvdcss) < 0) {

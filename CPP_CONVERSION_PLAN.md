@@ -322,9 +322,15 @@ Algorithm-heavy code with fewer OS-entry-point dependencies than device access.
 
 Focus:
 
-- [ ] Cast cleanup.
-- [ ] Fixed-width integer arithmetic.
-- [ ] Macro-heavy byte-order helpers.
+- [x] Cast cleanup.
+- [x] Fixed-width integer arithmetic.
+- [x] Macro-heavy byte-order helpers.
+
+Validation note:
+
+- [x] The implementation now lives in `src/cpxm.cpp`; the source compiled as C++17 without algorithm changes beyond the filename move, confirming that the earlier cast cleanup and `READ64_BE` hardening were already sufficient for this unit.
+- [x] The CPXM entry points keep a narrow C-linkage seam during the mixed-language phase so the remaining C implementation files still bind to `cppm_set_id_album()` and `cprm_set_id_media()`, while `cpxm.cpp` explicitly links to the still-C CSS and ioctl helpers it depends on.
+- [x] Meson was reconfigured for both the main and examples-enabled build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded, and a tiny external-style C consumer still compiled cleanly against the public `dvdcss.h` and `dvdcpxm.h` headers.
 
 #### `src/libdvdcpxm.c` -> `src/libdvdcpxm.cpp`
 
@@ -438,7 +444,7 @@ Use one focused change per step.
 - [x] Public-header C++ compatibility pass.
 - [x] Internal-header C++ compatibility pass.
 - [x] `error.c` conversion.
-- [ ] `cpxm.c` conversion.
+- [x] `cpxm.c` conversion.
 - [ ] `libdvdcpxm.c` conversion.
 - [ ] `css.c` plus `csstables.h` cleanup.
 - [ ] `device.c` conversion.
