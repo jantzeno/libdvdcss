@@ -237,11 +237,17 @@ Contains the densest macro and platform-API surface in the repo.
 Work:
 
 - [x] Audit packed structs, bitfields, zero-length arrays, and Windows typedefs for C++ compiler acceptance.
-- [ ] Replace C-only allocation or cast assumptions where necessary.
-- [ ] Keep binary layouts unchanged.
+- [x] Replace C-only allocation or cast assumptions where necessary.
+- [x] Keep binary layouts unchanged.
 
 Risk:
 Very high across Windows, BSD, Solaris, QNX, and OS/2 code paths.
+
+Validation note:
+
+- [x] `src/ioctl.h` now includes `<stdlib.h>` for the `__QNXNTO__` branch so the `INIT_CPT` allocation macro no longer relies on an external C declaration of `malloc`.
+- [x] A forced QNX-path C++ syntax check confirmed that `INIT_CPT` expands cleanly with typed allocation and cleanup in C++.
+- [x] Win32-target C++ validation confirmed that the earlier `DVD_COPY_PROTECT_PARAMETERS` and `DVD_COPY_PROTECT_KEY` layout cleanup preserved key binary invariants, including `offsetof(DVD_COPY_PROTECT_KEY, KeyData) == 24`, `DVD_COPY_PROTECT_KEY_HEADER_SIZE == 24`, and the expected compact sizes for `DVD_RPC_KEY` and `DVD_ASF`.
 
 #### `src/cpxm.h`
 

@@ -26,6 +26,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(__QNXNTO__)
+#include <stdlib.h>
+#endif
+
 int ioctl_ReadCopyright(int, int, int *);
 int ioctl_ReadDiscKey(int, const int *, uint8_t *);
 int ioctl_ReadTitleKey(int, const int *, int, uint8_t *);
