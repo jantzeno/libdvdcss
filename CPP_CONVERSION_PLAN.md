@@ -185,8 +185,14 @@ Byte-swap helpers are likely to be included by CPXM code and may contain macro t
 
 Work:
 
-- [ ] Ensure macros or inline helpers are valid in C++.
-- [ ] Prefer `static inline` or `constexpr` only if that does not change ABI or behavior.
+- [x] Ensure macros or inline helpers are valid in C++.
+- [x] Prefer `static inline` or `constexpr` only if that does not change ABI or behavior.
+
+Validation note:
+
+- [x] `src/bswap.h` now uses statement-safe assignment macros for `B2N_16`, `B2N_32`, and `B2N_64`, which compile cleanly as C++ while preserving the existing in-place update semantics at call sites.
+- [x] Standalone C++ validation passed for both the active little-endian path and the no-op `WORDS_BIGENDIAN` path, and the `READ64_BE` helper in `src/cpxm.h` continued to compile cleanly through the CPXM include chain.
+- [x] No conversion to `static inline` or `constexpr` was needed: keeping macros avoids changing the current platform-selection logic and lvalue-style mutation behavior while the codebase is still mixed C/C++.
 
 #### `src/css.h`
 
