@@ -24,6 +24,7 @@
 #ifndef DVDCSS_LIBDVDCSS_H
 #define DVDCSS_LIBDVDCSS_H
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -69,7 +70,7 @@ struct dvdcss_s {
   std::vector<dvd_title> p_titles;
 
   /* Key cache directory */
-  std::string psz_cachefile;
+  std::filesystem::path psz_cachefile;
 
   /* Error management */
   std::string psz_error;

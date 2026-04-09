@@ -83,10 +83,12 @@ static int  AttackPadding   ( const uint8_t[] );
 
 static int dvdcss_titlekey(dvdcss_t, int, dvdcss_key &);
 
-static int build_cache_block_path(const dvdcss_t dvdcss, int i_block,
-                                  char *psz_path, size_t path_size) {
-  return snprintf(psz_path, path_size, "%s/%." CACHE_FILENAME_LENGTH_STRING "x",
-                  dvdcss->psz_cachefile.c_str(), i_block);
+static std::filesystem::path build_cache_block_path(const dvdcss_t dvdcss,
+                                                    int i_block) {
+  char psz_block[11];
+  snprintf(psz_block, sizeof(psz_block), "%010x",
+           static_cast<unsigned int>(i_block));
+  return dvdcss->psz_cachefile / psz_block;
 }
 
 /*****************************************************************************
@@ -221,13 +223,10 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
   /* Check whether the key is in our disk cache */
   if (!dvdcss->psz_cachefile.empty()) {
-    char psz_cache_path[PATH_MAX];
-    if (build_cache_block_path(dvdcss, i_block, psz_cache_path,
-                               sizeof(psz_cache_path)) < 0) {
-      return -1;
-    }
+    const auto cache_path = build_cache_block_path(dvdcss, i_block);
+    const auto cache_path_string = cache_path.string();
 
-    i_fd = open(psz_cache_path, O_RDONLY);
+    i_fd = open(cache_path_string.c_str(), O_RDONLY);
     b_cache = 1;
 
     if (i_fd >= 0) {
@@ -271,13 +270,10 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
   /* Key is valid, we store it on disk. */
   if (!dvdcss->psz_cachefile.empty() && b_cache) {
-    char psz_cache_path[PATH_MAX];
-    if (build_cache_block_path(dvdcss, i_block, psz_cache_path,
-                               sizeof(psz_cache_path)) < 0) {
-      return -1;
-    }
+    const auto cache_path = build_cache_block_path(dvdcss, i_block);
+    const auto cache_path_string = cache_path.string();
 
-    i_fd = open(psz_cache_path, O_RDWR | O_CREAT, 0644);
+    i_fd = open(cache_path_string.c_str(), O_RDWR | O_CREAT, 0644);
     if (i_fd >= 0) {
       char psz_key[PSZ_KEY_SIZE + 2];
 

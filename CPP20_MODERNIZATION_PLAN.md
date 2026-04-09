@@ -42,7 +42,7 @@
 ### `dvdcss_s` struct (`src/libdvdcss.h`)
 
 - [x] Replace `char *psz_device` (strdup/free) with `std::string`
-- [ ] Replace `char psz_cachefile[PATH_MAX]` + `char *psz_block` with `std::filesystem::path`
+- [x] Replace `char psz_cachefile[PATH_MAX]` + `char *psz_block` with `std::filesystem::path`
 - [x] Replace `const char *psz_error` with `std::string` or `std::string_view` to a static table
 - [ ] Replace raw function pointers `pf_seek`/`pf_read`/`pf_readv` with a device-strategy abstraction (virtual base class or `std::function`)
 - [x] Replace Win32 `char *p_readv_buffer` / `int i_readv_buf_size` with `std::vector<uint8_t>`
@@ -91,7 +91,7 @@
 ### Ioctl platform dispatch (`src/ioctl.cpp`)
 
 - [ ] Replace `INIT_RDC` / `INIT_USCSI` / `INIT_DVDIOCTL` / `INIT_CPT` / `INIT_SSC` macro families with `constexpr` builder functions or platform-specific factory helpers
-- [ ] Replace `memset(&struct, 0, sizeof)` patterns with value-initialization `{}`
+- [x] Replace `memset(&struct, 0, sizeof)` patterns with value-initialization `{}`
 
 ### Error handling internals
 

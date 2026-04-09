@@ -1003,7 +1003,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
 
 #if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
     (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
-  struct sg_io_hdr io_hdr;
+  struct sg_io_hdr io_hdr = {};
   uint8_t sense[32] = {0};
   uint8_t cdb[12] = {0};
   uint8_t *data_buf = (uint8_t *)malloc(CPRM_MEDIA_ID_SIZE + 4);
@@ -1011,7 +1011,6 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   if (!data_buf)
     i_ret = -1;
 
-  memset(&io_hdr, 0, sizeof(io_hdr));
   memset(data_buf, 0, CPRM_MEDIA_ID_SIZE + 4);
 
   cdb[0] = GPCMD_READ_DVD_STRUCTURE;
@@ -1122,8 +1121,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   cdb[9] = (uint8_t)((CPRM_MKB_PACK_SIZE + 4) & 0xFF);
   cdb[10] = *p_agid << 6;
 
-  struct sg_io_hdr io_hdr;
-  memset(&io_hdr, 0, sizeof(io_hdr));
+  struct sg_io_hdr io_hdr = {};
 
   io_hdr.interface_id = 'S';
   io_hdr.dxfer_direction = SG_DXFER_FROM_DEV;

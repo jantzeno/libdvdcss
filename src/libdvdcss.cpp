@@ -203,7 +203,7 @@ static int set_access_method(dvdcss_t dvdcss) {
 
 static int set_cache_directory(dvdcss_t dvdcss) {
   char *psz_cache = getenv("DVDCSS_CACHE");
-  std::string cache_directory;
+  std::filesystem::path cache_directory;
 
   if (psz_cache && !strcmp(psz_cache, "off")) {
     return -1;
@@ -217,7 +217,7 @@ static int set_cache_directory(dvdcss_t dvdcss) {
      * C:\Documents and Settings\$USER\Application Data\dvdcss\ */
     if (SHGetFolderPathA(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL,
                          SHGFP_TYPE_CURRENT, psz_home) == S_OK) {
-      cache_directory = std::string(psz_home) + "\\dvdcss";
+      cache_directory = std::filesystem::path(psz_home) / "dvdcss";
     }
 #else
 #ifdef __ANDROID__
@@ -262,9 +262,10 @@ static int set_cache_directory(dvdcss_t dvdcss) {
 #endif /* __OS2__ */
 
       if (cache_directory.empty()) {
-        cache_directory = std::string(psz_home) + "/.dvdcss";
+        cache_directory = std::filesystem::path(psz_home) / ".dvdcss";
       } else {
-        cache_directory += std::string(psz_home) + "/.dvdcss";
+        cache_directory += psz_home;
+        cache_directory /= ".dvdcss";
       }
     }
 #endif /* ! defined( _WIN32 ) */
@@ -274,8 +275,9 @@ static int set_cache_directory(dvdcss_t dvdcss) {
 
   /* Check that there is enough space for the cache directory path and the
    * block filename. The +1s are path separators. */
+  const std::string cache_directory_string = cache_directory.string();
   if (!cache_directory.empty() &&
-      cache_directory.size() + 1 + DISC_TITLE_LENGTH + 1 +
+      cache_directory_string.size() + 1 + DISC_TITLE_LENGTH + 1 +
               MANUFACTURING_DATE_LENGTH + 1 + STRING_KEY_SIZE + 1 +
               sizeof(CACHE_TAG_NAME) >
           PATH_MAX) {
@@ -293,31 +295,19 @@ static int init_cache_dir(dvdcss_t dvdcss) {
       "# This file is a cache directory tag created by libdvdcss.\r\n"
       "# For information about cache directory tags, see:\r\n"
       "#   http://www.brynosaurus.com/cachedir/\r\n";
-  char psz_tagfile[PATH_MAX];
   int i_fd, i_ret;
 
   i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
   if (i_ret < 0 && errno != EEXIST) {
     print_error(dvdcss, "failed creating cache directory '%s'",
-                dvdcss->psz_cachefile.c_str());
+                dvdcss->psz_cachefile.string().c_str());
     dvdcss->psz_cachefile.clear();
     return -1;
   }
 
-  i_ret = snprintf(psz_tagfile, PATH_MAX, "%s/" CACHE_TAG_NAME,
-                   dvdcss->psz_cachefile.c_str());
-  if (i_ret < 0 || i_ret >= PATH_MAX) {
-    if (i_ret < 0)
-      print_error(dvdcss, "failed to compose cache directory tag path");
-    else
-      print_error(dvdcss,
-                  "cache directory tag path too long: %s/" CACHE_TAG_NAME,
-                  dvdcss->psz_cachefile.c_str());
-    dvdcss->psz_cachefile.clear();
-    return -1;
-  }
-
-  i_fd = open(psz_tagfile, O_RDWR | O_CREAT, 0644);
+  const auto tagfile = dvdcss->psz_cachefile / CACHE_TAG_NAME;
+  const auto tagfile_string = tagfile.string();
+  i_fd = open(tagfile_string.c_str(), O_RDWR | O_CREAT, 0644);
   if (i_fd >= 0) {
     ssize_t len = strlen(psz_tag);
     if (write(i_fd, psz_tag, len) < len) {
@@ -331,6 +321,7 @@ static int init_cache_dir(dvdcss_t dvdcss) {
 static void create_cache_subdir(dvdcss_t dvdcss) {
   uint8_t p_sector[DVDCSS_BLOCK_SIZE];
   char psz_key[STRING_KEY_SIZE + 1];
+  std::string cache_subdir;
   char *psz_title;
   uint8_t *psz_serial;
   int i, i_ret;
@@ -408,12 +399,12 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   }
 
   /* We have a disc name or ID, we can create the cache subdirectory. */
-  dvdcss->psz_cachefile += "/";
-  dvdcss->psz_cachefile += psz_title;
-  dvdcss->psz_cachefile += "-";
-  dvdcss->psz_cachefile += (char *)psz_serial;
-  dvdcss->psz_cachefile += "-";
-  dvdcss->psz_cachefile += psz_key;
+  cache_subdir = psz_title;
+  cache_subdir += "-";
+  cache_subdir += reinterpret_cast<char *>(psz_serial);
+  cache_subdir += "-";
+  cache_subdir += psz_key;
+  dvdcss->psz_cachefile /= cache_subdir;
 
   i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
   if (i_ret < 0 && errno != EEXIST) {
@@ -422,7 +413,7 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   }
 
   print_debug(dvdcss, "Content Scrambling System (CSS) key cache dir: %s",
-              dvdcss->psz_cachefile.c_str());
+              dvdcss->psz_cachefile.string().c_str());
   return;
 
 error:
