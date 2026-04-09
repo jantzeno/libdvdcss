@@ -107,8 +107,6 @@ using std::memset;
 static inline HANDLE dvdcss_to_handle(dvdcss_fd_t fd) {
   return reinterpret_cast<HANDLE>(fd);
 }
-
-#define DVDCSS_TO_HANDLE(fd) dvdcss_to_handle(fd)
 #endif
 
 /*****************************************************************************
@@ -336,7 +334,7 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   sptd.Cdb[7] = DVD_STRUCT_COPYRIGHT;
 
   i_ret =
-      DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
+      DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
                       &sptd, sizeof(SCSI_PASS_THROUGH_DIRECT), &sptd,
                       sizeof(SCSI_PASS_THROUGH_DIRECT), &tmp, NULL)
           ? 0
@@ -482,7 +480,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   key->KeyType = DVD_KEY_TYPE::DvdDiskKey;
   key->KeyFlags = 0;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -636,7 +634,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   key->Parameters.TitleOffset.QuadPart =
       static_cast<LONGLONG>(i_pos) * DVDCSS_BLOCK_SIZE;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -759,7 +757,7 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
 #elif defined(_WIN32)
   DWORD tmp = 0;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_START_SESSION, &tmp,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_START_SESSION, &tmp,
                           4, pi_agid, sizeof(*pi_agid), &tmp, NULL)
               ? 0
               : -1;
@@ -882,7 +880,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   key->KeyType = DVD_KEY_TYPE::DvdChallengeKey;
   key->KeyFlags = 0;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -1007,7 +1005,7 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   keyData = reinterpret_cast<PDVD_ASF>(key->KeyData);
   keyData->SuccessFlag = *pi_asf;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -1137,7 +1135,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   key->KeyType = DVD_KEY_TYPE::DvdBusKey1;
   key->KeyFlags = 0;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -1237,7 +1235,7 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
 #elif defined(_WIN32)
   DWORD tmp;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_END_SESSION,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_END_SESSION,
                           pi_agid, sizeof(*pi_agid), NULL, 0, &tmp, NULL)
               ? 0
               : -1;
@@ -1333,7 +1331,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   sptd.Cdb[10] = *p_agid << 6;
 
   i_ret =
-      DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
+      DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
                       &sptd, sizeof(sptd), &sptd, sizeof(sptd), &tmp, NULL)
           ? 0
           : -1;
@@ -1458,7 +1456,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   sptd.Cdb[10] = *p_agid << 6;
 
   i_ret =
-      DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
+      DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
                       &sptd, sizeof(sptd), &sptd, sizeof(sptd), &tmp, NULL)
           ? 0
           : -1;
@@ -1585,7 +1583,7 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   memcpy(key->KeyData, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_SEND_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_SEND_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -1716,7 +1714,7 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
 
   memcpy(key->KeyData, p_key.data(), DVD_KEY_SIZE);
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_SEND_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_SEND_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;
@@ -1848,7 +1846,7 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   key->KeyType = DVD_KEY_TYPE::DvdGetRpcKey;
   key->KeyFlags = 0;
 
-  i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
+  i_ret = DeviceIoControl(dvdcss_to_handle(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
               ? 0
               : -1;

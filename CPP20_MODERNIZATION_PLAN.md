@@ -107,7 +107,7 @@
 ## Phase 4 — Cleanup & Validation
 
 - [x] Remove `c` from `project()` languages in `meson.build` (keep only for public header install-test if desired)
-- [ ] Remove C-only compatibility shims (`MALLOC_CAST`, etc.) if any survive
+- [x] Remove C-only compatibility shims (`MALLOC_CAST`, etc.) if any survive
 - [x] Audit all `#include` directives: replace C headers (`<string.h>`, `<stdlib.h>`, `<stdio.h>`) with C++ equivalents (`<cstring>`, `<cstdlib>`, `<cstdio>`) in implementation files
 - [ ] Run AddressSanitizer + UBSan on test/example binaries to validate no regressions
 - [x] Build and verify a standalone C consumer against the installed public headers (the `extern "C"` ABI contract)

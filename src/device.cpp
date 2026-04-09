@@ -84,8 +84,6 @@ static inline HANDLE dvdcss_to_handle(dvdcss_fd_t fd) {
 static int dvdcss_close_handle(dvdcss_fd_t fd) noexcept {
   return CloseHandle(dvdcss_to_handle(fd)) ? 0 : -1;
 }
-
-#define DVDCSS_TO_HANDLE(fd) dvdcss_to_handle(fd)
 #endif
 
 static int dvdcss_close_fd(dvdcss_fd_t fd) noexcept { return close(fd); }
@@ -644,7 +642,7 @@ static int win2k_seek(dvdcss_t dvdcss, int i_blocks) {
   li_seek.QuadPart = static_cast<LONGLONG>(i_blocks) * DVDCSS_BLOCK_SIZE;
 
   li_seek.LowPart =
-      SetFilePointer(DVDCSS_TO_HANDLE(dvdcss->i_fd), li_seek.LowPart,
+      SetFilePointer(dvdcss_to_handle(dvdcss->i_fd), li_seek.LowPart,
                      &li_seek.HighPart, FILE_BEGIN);
   if ((li_seek.LowPart == INVALID_SET_FILE_POINTER) &&
       GetLastError() != NO_ERROR) {
@@ -734,7 +732,7 @@ static int stream_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
 static int win2k_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
   DWORD i_bytes;
 
-  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), p_buffer,
+  if (!ReadFile(dvdcss_to_handle(dvdcss->i_fd), p_buffer,
                 i_blocks * DVDCSS_BLOCK_SIZE, &i_bytes, NULL)) {
     dvdcss->i_pos = -1;
     return -1;
@@ -868,7 +866,7 @@ static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   if (i_total_bytes <= 0)
     return 0;
 
-  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), dvdcss->p_readv_buffer.data(),
+  if (!ReadFile(dvdcss_to_handle(dvdcss->i_fd), dvdcss->p_readv_buffer.data(),
                 i_total_bytes, &i_bytes, NULL)) {
     /* The read failed... too bad.
      * As in the POSIX spec the file position is left

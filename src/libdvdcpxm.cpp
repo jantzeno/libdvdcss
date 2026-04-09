@@ -57,10 +57,6 @@
 
 using std::memcpy;
 
-#define IS_SYNC_CODE(word)                                                     \
-  ((word)[0] == 0x00 && (word)[1] == 0x00 && (word)[2] == 0x01 &&              \
-   (word)[3] == 0xBA)
-
 struct cpxm_cache_entry {
   cpxm_s cpxm;
   dev_t st_dev;
@@ -76,6 +72,11 @@ static std::list<cpxm_cache_entry> g_cpxm_cache;
   }
 
   return std::nullopt;
+}
+
+[[nodiscard]] static bool is_sync_code(std::span<const uint8_t> word) noexcept {
+  return word.size() >= 4 && word[0] == 0x00 && word[1] == 0x00 &&
+         word[2] == 0x01 && word[3] == 0xBA;
 }
 
 /* these values are used by libdvdcpxm to process the Media Key Block */
@@ -580,14 +581,14 @@ int mpeg2_check_pes_scrambling_control(
   int pes_scrambling_control;
 
   pes_scrambling_control = 0;
-  if (IS_SYNC_CODE(p_block.data())) {
+  if (is_sync_code(p_block)) {
     pes_scrambling_control = (p_block[20] & 0x30) >> 4;
   }
   return pes_scrambling_control;
 }
 
 void mpeg2_reset_pes_scrambling_control(std::span<uint8_t> p_block) noexcept {
-  if (IS_SYNC_CODE(p_block.data())) {
+  if (is_sync_code(p_block)) {
     p_block[20] &= 0xCD; // reset pes_scrambling_control and copyright flags;
   }
 }
@@ -598,7 +599,7 @@ void mpeg2_reset_cci(std::span<uint8_t> p_block) noexcept {
   int pes_len;
 
   p_curr = p_block.data();
-  if (IS_SYNC_CODE(p_block.data())) {
+  if (is_sync_code(p_block)) {
     p_curr += 14 + (p_curr[13] & 0x07);
 
     while (p_curr < p_block.data() + p_block.size()) {
