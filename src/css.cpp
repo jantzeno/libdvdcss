@@ -40,7 +40,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <sys/types.h>
+#include <vector>
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
@@ -58,8 +60,6 @@
 #include "ioctl.h"
 #include "libdvdcss.h"
 
-using std::calloc;
-using std::free;
 using std::memcmp;
 using std::memcpy;
 using std::memset;
@@ -67,7 +67,7 @@ using std::snprintf;
 using std::sprintf;
 using std::sscanf;
 
-#define PSZ_KEY_SIZE (DVD_KEY_SIZE * 3)
+inline constexpr int kPszKeySize = DVD_KEY_SIZE * 3;
 
 /*****************************************************************************
  * Local prototypes
@@ -239,12 +239,12 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
     b_cache = 1;
 
     if (i_fd >= 0) {
-      char psz_key[PSZ_KEY_SIZE];
+      char psz_key[kPszKeySize];
       unsigned int k0, k1, k2, k3, k4;
 
-      psz_key[PSZ_KEY_SIZE - 1] = '\0';
+      psz_key[kPszKeySize - 1] = '\0';
 
-      if (read(i_fd, psz_key, PSZ_KEY_SIZE - 1) == PSZ_KEY_SIZE - 1 &&
+      if (read(i_fd, psz_key, kPszKeySize - 1) == kPszKeySize - 1 &&
           sscanf(psz_key, "%x:%x:%x:%x:%x", &k0, &k1, &k2, &k3, &k4) == 5) {
         p_title_key = {static_cast<uint8_t>(k0), static_cast<uint8_t>(k1),
                        static_cast<uint8_t>(k2), static_cast<uint8_t>(k3),
@@ -284,12 +284,12 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
     i_fd = open(cache_path_string.c_str(), O_RDWR | O_CREAT, 0644);
     if (i_fd >= 0) {
-      char psz_key[PSZ_KEY_SIZE + 2];
+      char psz_key[kPszKeySize + 2];
 
       sprintf(psz_key, "%02x:%02x:%02x:%02x:%02x\r\n", p_title_key[0],
               p_title_key[1], p_title_key[2], p_title_key[3], p_title_key[4]);
 
-      if (write(i_fd, psz_key, PSZ_KEY_SIZE + 1) < PSZ_KEY_SIZE + 1) {
+      if (write(i_fd, psz_key, kPszKeySize + 1) < kPszKeySize + 1) {
         print_error(dvdcss, "Error caching key on disk, continuing..\n");
       }
       close(i_fd);
@@ -1041,10 +1041,9 @@ static void DecryptTitleKey(const dvdcss_key &p_disc_key,
  * This function uses a big amount of memory to crack the disc key from the
  * disc key hash, if player keys are not available.
  *****************************************************************************/
-#define K1TABLESIZE 65536
-#define K1TABLEWIDTH 10
-
-#define BIGTABLESIZE 16777216
+inline constexpr int kK1TableSize = 65536;
+inline constexpr int kK1TableWidth = 10;
+inline constexpr int kBigTableSize = 16777216;
 
 /*
  * Simple function to test if a candidate key produces the given hash
@@ -1069,21 +1068,23 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
   unsigned int lfsr1b;                  /* lower 8 bits of LFSR1 */
   unsigned int tmp, tmp2, tmp3, tmp4, tmp5;
   int i, j, ret = 0;
-  unsigned int nStepA;      /* iterator for LFSR1 start state */
-  unsigned int nStepB;      /* iterator for possible B[0]     */
-  unsigned int nTry;        /* iterator for K[1] possibilities */
-  unsigned int nPossibleK1; /* #of possible K[1] values */
-  unsigned char *K1table;   /* Lookup table for possible K[1] */
-  unsigned int *BigTable;   /* LFSR2 startstate indexed by
-                             * 1,2,5 output byte */
+  unsigned int nStepA;                /* iterator for LFSR1 start state */
+  unsigned int nStepB;                /* iterator for possible B[0]     */
+  unsigned int nTry;                  /* iterator for K[1] possibilities */
+  unsigned int nPossibleK1;           /* #of possible K[1] values */
+  std::vector<unsigned char> K1table; /* Lookup table for possible K[1] */
+  std::vector<unsigned int> BigTable; /* LFSR2 startstate indexed by
+                                       * 1,2,5 output byte */
 
   /*
    * Prepare tables for hash reversal
    */
 
   /* initialize lookup tables for k[1] */
-  K1table = (unsigned char *)calloc(K1TABLESIZE, K1TABLEWIDTH);
-  if (K1table == NULL) {
+  try {
+    K1table.resize(kK1TableSize * kK1TableWidth);
+    BigTable.resize(kBigTableSize);
+  } catch (const std::bad_alloc &) {
     return -1;
   }
 
@@ -1095,26 +1096,20 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
     for (j = 0; j < 256; j++) /* B[0] */
     {
       tmp3 = j ^ tmp2 ^ i; /* C[1] */
-      tmp4 =
-          K1table[K1TABLEWIDTH * (256 * j + tmp3)]; /* count of entries  here */
+      tmp4 = K1table[kK1TableWidth *
+                     (256 * j + tmp3)]; /* count of entries  here */
       tmp4++;
-      if (tmp4 < K1TABLEWIDTH) {
-        K1table[K1TABLEWIDTH * (256 * j + tmp3) + tmp4] = i;
+      if (tmp4 < kK1TableWidth) {
+        K1table[kK1TableWidth * (256 * j + tmp3) + tmp4] = i;
       }
-      K1table[K1TABLEWIDTH * (256 * j + tmp3)] = tmp4;
+      K1table[kK1TableWidth * (256 * j + tmp3)] = tmp4;
     }
   }
 
   /* Initializing our really big table */
-  BigTable = (unsigned int *)calloc(BIGTABLESIZE, sizeof(*BigTable));
-  if (BigTable == NULL) {
-    free(K1table);
-    return -1;
-  }
-
   tmp3 = 0;
 
-  for (i = 0; i < BIGTABLESIZE; i++) {
+  for (i = 0; i < kBigTableSize; i++) {
     tmp = ((i + i) & 0x1fffff0) | 0x8 | (i & 0x7);
 
     for (j = 0; j < 5; j++) {
@@ -1124,7 +1119,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
     }
 
     j = (out2[0] << 16) | (out2[1] << 8) | out2[4];
-    if (j >= BIGTABLESIZE) {
+    if (j >= kBigTableSize) {
       ret = -1;
       goto error;
     }
@@ -1136,7 +1131,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
    */
   tmp5 = p_disc_key[0] ^ p_css_tab1[p_disc_key[1]];
 
-  for (nStepA = 0; nStepA < K1TABLESIZE; nStepA++) {
+  for (nStepA = 0; nStepA < kK1TableSize; nStepA++) {
     lfsr1a = 0x100 | (nStepA >> 8);
     lfsr1b = nStepA & 0xff;
 
@@ -1161,11 +1156,11 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
       k[0] = p_css_tab1[B[0]] ^ C[0];
       B[4] = B[0] ^ k[0] ^ tmp2;
       k[4] = B[4] ^ tmp;
-      nPossibleK1 = K1table[K1TABLEWIDTH * (256 * B[0] + C[1])];
+      nPossibleK1 = K1table[kK1TableWidth * (256 * B[0] + C[1])];
 
       /* Try out all possible values for k[1] */
       for (nTry = 0; nTry < nPossibleK1; nTry++) {
-        k[1] = K1table[K1TABLEWIDTH * (256 * B[0] + C[1]) + nTry + 1];
+        k[1] = K1table[kK1TableWidth * (256 * B[0] + C[1]) + nTry + 1];
         B[1] = tmp5 ^ k[1];
 
         /* reconstruct output from LFSR2 */
@@ -1179,7 +1174,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
 
         /* test first possible out2[4] */
         tmp4 = (out2[0] << 16) | (out2[1] << 8) | out2[4];
-        if (tmp4 >= BIGTABLESIZE) {
+        if (tmp4 >= kBigTableSize) {
           ret = -1;
           goto error;
         }
@@ -1201,7 +1196,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         /* Test second possible out2[4] */
         out2[4] = (out2[4] + 0xff) & 0xff;
         tmp4 = (out2[0] << 16) | (out2[1] << 8) | out2[4];
-        if (tmp4 >= BIGTABLESIZE) {
+        if (tmp4 >= kBigTableSize) {
           ret = -1;
           goto error;
         }
@@ -1227,9 +1222,6 @@ end:
   memcpy(p_disc_key, &C[0], DVD_KEY_SIZE);
 
 error:
-  free(K1table);
-  free(BigTable);
-
   return ret;
 }
 

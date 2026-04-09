@@ -81,10 +81,9 @@
 #include <array>
 #include <new>
 #include <string_view>
+#include <vector>
 
-using std::free;
 using std::getenv;
-using std::malloc;
 using std::memcpy;
 using std::snprintf;
 using std::sprintf;
@@ -425,12 +424,9 @@ static int libc_open(dvdcss_t dvdcss, const char *psz_device) {
   dvdcss->i_fd = -1;
   wlen = MultiByteToWideChar(CP_UTF8, 0, psz_device, -1, NULL, 0);
   if (wlen > 0) {
-    wchar_t *wpath = (wchar_t *)malloc(sizeof(wchar_t) * wlen);
-    if (wpath) {
-      if (MultiByteToWideChar(CP_UTF8, 0, psz_device, -1, wpath, wlen)) {
-        dvdcss->i_fd = _wopen(wpath, O_BINARY);
-      }
-      free(wpath);
+    std::vector<wchar_t> wpath(static_cast<size_t>(wlen));
+    if (MultiByteToWideChar(CP_UTF8, 0, psz_device, -1, wpath.data(), wlen)) {
+      dvdcss->i_fd = _wopen(wpath.data(), O_BINARY);
     }
   }
 #else

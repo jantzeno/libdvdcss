@@ -57,13 +57,7 @@ typedef struct cpxm {
 typedef cpxm_s *p_cpxm;
 
 /* cpxm uses the same css authentification method when using a usb dvd drive */
-#ifdef __cplusplus
-extern "C" {
-#endif
 [[nodiscard]] int cppm_set_id_album(dvdcss_t dvdcss);
 [[nodiscard]] int cprm_set_id_media(dvdcss_t dvdcss);
-#ifdef __cplusplus
-}
-#endif
 
 #endif // CPXM_H

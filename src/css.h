@@ -37,11 +37,11 @@
 
 #include "dvdcss/dvdcss.h"
 
-#define DVD_KEY_SIZE 5
-
 #ifdef __cplusplus
+inline constexpr int DVD_KEY_SIZE = 5;
 using dvdcss_key = std::array<uint8_t, DVD_KEY_SIZE>;
 #else
+#define DVD_KEY_SIZE 5
 typedef uint8_t dvdcss_key[DVD_KEY_SIZE];
 #endif
 

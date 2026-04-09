@@ -137,7 +137,7 @@ static constexpr std::array<device_key_t, 16> cprm_device_keys = {{
 }};
 
 static constexpr uint8_t rol8_constexpr(uint8_t code, int n) {
-  return (uint8_t)((code << n) | (code >> (8 - n)));
+  return static_cast<uint8_t>((code << n) | (code >> (8 - n)));
 }
 
 static constexpr std::array<uint32_t, 256> build_sbox_f() {
@@ -145,10 +145,10 @@ static constexpr std::array<uint32_t, 256> build_sbox_f() {
 
   for (size_t i = 0; i < values.size(); ++i) {
     unsigned c0 = sbox[i];
-    const unsigned c1 = rol8_constexpr((uint8_t)(c0 ^ 0x65), 1);
-    const unsigned c2 = rol8_constexpr((uint8_t)(c0 ^ 0x2b), 5);
-    const unsigned c3 = rol8_constexpr((uint8_t)(c0 ^ 0xc9), 2);
-    c0 ^= (unsigned)i;
+    const unsigned c1 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0x65), 1);
+    const unsigned c2 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0x2b), 5);
+    const unsigned c3 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0xc9), 2);
+    c0 ^= static_cast<unsigned>(i);
     values[i] = (c3 << 24) + (c2 << 16) + (c1 << 8) + c0;
   }
 
@@ -158,15 +158,15 @@ static constexpr std::array<uint32_t, 256> build_sbox_f() {
 static constexpr auto sbox_f = build_sbox_f();
 
 /* Functions Used by the C2 Cypher */
-static inline uint32_t rol32(uint32_t code, int n) {
+static inline uint32_t rol32(uint32_t code, int n) noexcept {
   return (code << n) | (code >> (32 - n));
 }
 
-static inline uint8_t rol8(uint8_t code, int n) {
+static inline uint8_t rol8(uint8_t code, int n) noexcept {
   return (code << n) | (code >> (8 - n));
 }
 
-static inline uint32_t F(uint32_t code, uint32_t key) {
+static inline uint32_t F(uint32_t code, uint32_t key) noexcept {
   uint32_t work;
 
   work = code + key;
@@ -175,20 +175,21 @@ static inline uint32_t F(uint32_t code, uint32_t key) {
   return work;
 }
 
-uint64_t c2_enc(uint64_t code, uint64_t key) {
+uint64_t c2_enc(uint64_t code, uint64_t key) noexcept {
   uint32_t L, R, t;
   uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
   uint32_t sk[10];
   int round;
 
-  L = (uint32_t)((code >> 32) & 0xffffffff);
-  R = (uint32_t)((code) & 0xffffffff);
-  ktmpa = (uint32_t)((key >> 32) & 0x00ffffff);
-  ktmpb = (uint32_t)((key) & 0xffffffff);
+  L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
+  R = static_cast<uint32_t>(code & 0xffffffffu);
+  ktmpa = static_cast<uint32_t>((key >> 32) & 0x00ffffffu);
+  ktmpb = static_cast<uint32_t>(key & 0xffffffffu);
 
   for (round = 0; round < 10; round++) {
     ktmpa &= 0x00ffffff;
-    sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+    sk[round] =
+        ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
     ktmpc = (ktmpb >> (32 - 17));
     ktmpd = (ktmpa >> (24 - 17));
     ktmpa = (ktmpa << 17) | ktmpc;
@@ -204,23 +205,24 @@ uint64_t c2_enc(uint64_t code, uint64_t key) {
   t = L;
   L = R;
   R = t;
-  return (((uint64_t)L) << 32) | R;
+  return (static_cast<uint64_t>(L) << 32) | R;
 }
 
-uint64_t c2_dec(uint64_t code, uint64_t key) {
+uint64_t c2_dec(uint64_t code, uint64_t key) noexcept {
   uint32_t L, R, t;
   uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
   uint32_t sk[10];
   int round;
 
-  L = (uint32_t)((code >> 32) & 0xffffffff);
-  R = (uint32_t)((code) & 0xffffffff);
-  ktmpa = (uint32_t)((key >> 32) & 0x00ffffff);
-  ktmpb = (uint32_t)((key) & 0xffffffff);
+  L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
+  R = static_cast<uint32_t>(code & 0xffffffffu);
+  ktmpa = static_cast<uint32_t>((key >> 32) & 0x00ffffffu);
+  ktmpb = static_cast<uint32_t>(key & 0xffffffffu);
 
   for (round = 0; round < 10; round++) {
     ktmpa &= 0x00ffffff;
-    sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+    sk[round] =
+        ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
     ktmpc = (ktmpb >> (32 - 17));
     ktmpd = (ktmpa >> (24 - 17));
     ktmpa = (ktmpa << 17) | ktmpc;
@@ -237,10 +239,12 @@ uint64_t c2_dec(uint64_t code, uint64_t key) {
   t = L;
   L = R;
   R = t;
-  return (((uint64_t)L) << 32) | R;
+  return (static_cast<uint64_t>(L) << 32) | R;
 }
 
-uint64_t c2_g(uint64_t code, uint64_t key) { return c2_enc(code, key) ^ code; }
+uint64_t c2_g(uint64_t code, uint64_t key) noexcept {
+  return c2_enc(code, key) ^ code;
+}
 
 void c2_ecbc(void *p_buffer, uint64_t key, int length) {
   uint32_t L, R, t;
@@ -254,14 +258,15 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length) {
 
   for (i = 0; i < length; i += 8) {
     inout = read64_be(p_buffer);
-    L = (uint32_t)((inout >> 32) & 0xffffffff);
-    R = (uint32_t)((inout) & 0xffffffff);
-    ktmpa = (uint32_t)((inkey >> 32) & 0x00ffffff);
-    ktmpb = (uint32_t)((inkey) & 0xffffffff);
+    L = static_cast<uint32_t>((inout >> 32) & 0xffffffffu);
+    R = static_cast<uint32_t>(inout & 0xffffffffu);
+    ktmpa = static_cast<uint32_t>((inkey >> 32) & 0x00ffffffu);
+    ktmpb = static_cast<uint32_t>(inkey & 0xffffffffu);
 
     for (round = 0; round < key_round; round++) {
       ktmpa &= 0x00ffffff;
-      sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+      sk[round] =
+          ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
       ktmpc = (ktmpb >> (32 - 17));
       ktmpd = (ktmpa >> (24 - 17));
       ktmpa = (ktmpa << 17) | ktmpc;
@@ -272,7 +277,7 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length) {
       L += F(R, sk[round % key_round]);
 
       if (round == 4) {
-        inkey = key ^ (((uint64_t)(R & 0x00ffffff) << 32) | L);
+        inkey = key ^ ((static_cast<uint64_t>(R & 0x00ffffffu) << 32) | L);
       }
       t = L;
       L = R;
@@ -282,10 +287,10 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length) {
     t = L;
     L = R;
     R = t;
-    inout = (((uint64_t)L) << 32) | R;
+    inout = (static_cast<uint64_t>(L) << 32) | R;
     B2N_64(inout);
     memcpy(p_buffer, &inout, sizeof(inout));
-    p_buffer = (uint8_t *)p_buffer + 8;
+    p_buffer = static_cast<uint8_t *>(p_buffer) + 8;
     key_round = 2;
   }
 }
@@ -296,7 +301,7 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
   uint32_t sk[10];
   uint64_t inout, inkey;
   int round, key_round, i;
-  uint8_t *buf = (uint8_t *)p_buffer;
+  uint8_t *buf = static_cast<uint8_t *>(p_buffer);
 
   inkey = key;
   key_round = 10;
@@ -304,14 +309,15 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
   for (i = 0; i < length; i += 8) {
     inout = read64_be(buf);
 
-    L = (uint32_t)((inout >> 32) & 0xffffffff);
-    R = (uint32_t)((inout) & 0xffffffff);
-    ktmpa = (uint32_t)((inkey >> 32) & 0x00ffffff);
-    ktmpb = (uint32_t)((inkey) & 0xffffffff);
+    L = static_cast<uint32_t>((inout >> 32) & 0xffffffffu);
+    R = static_cast<uint32_t>(inout & 0xffffffffu);
+    ktmpa = static_cast<uint32_t>((inkey >> 32) & 0x00ffffffu);
+    ktmpb = static_cast<uint32_t>(inkey & 0xffffffffu);
 
     for (round = 0; round < key_round; round++) {
       ktmpa &= 0x00ffffff;
-      sk[round] = ktmpb + ((uint32_t)sbox[(ktmpa & 0xff) ^ round] << 4);
+      sk[round] =
+          ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
       ktmpc = (ktmpb >> (32 - 17));
       ktmpd = (ktmpa >> (24 - 17));
       ktmpa = (ktmpa << 17) | ktmpc;
@@ -325,14 +331,14 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
       R = t;
 
       if (round == 5) {
-        inkey = key ^ (((uint64_t)(R & 0x00ffffff) << 32) | L);
+        inkey = key ^ ((static_cast<uint64_t>(R & 0x00ffffffu) << 32) | L);
       }
     }
 
     t = L;
     L = R;
     R = t;
-    inout = (((uint64_t)L) << 32) | R;
+    inout = (static_cast<uint64_t>(L) << 32) | R;
     B2N_64(inout);
     memcpy(buf, &inout, sizeof(uint64_t));
 
@@ -347,8 +353,8 @@ std::vector<uint8_t> cprm_get_mkb(dvdcss_t dvdcss) {
   int mkb_packs, i;
   mkb_packs = 16;
 
-  if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd, &dvdcss->css.i_agid, 0,
-                            (uint8_t *)mkb_pack, &mkb_packs))
+  if (ioctl_ReadCPRMMKBPack(dvdcss->i_fd, &dvdcss->css.i_agid, 0, mkb_pack,
+                            &mkb_packs))
     return {};
 
   std::vector<uint8_t> mkb(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
@@ -386,7 +392,7 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
     mkb_pos = 16;
     no_more_records = 0;
     while (!no_more_records) {
-      record_type = *(uint8_t *)&p_mkb[mkb_pos];
+      record_type = p_mkb[mkb_pos];
       memcpy(&length, &p_mkb[mkb_pos], sizeof(length));
       length &= 0xffffff00;
       B2N_32(length);
@@ -409,7 +415,7 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
         B2N_64(buffer);
         /* intentional fallthrough */
       case 0x01: /* Calculate media key record */
-        column = ((uint8_t *)&buffer)[4];
+        column = reinterpret_cast<uint8_t *>(&buffer)[4];
         /*
         if (column >= 16 || ((uint8_t*)&buffer)[5] != 0 ||
         ((uint8_t*)&buffer)[6] != 0 || ((uint8_t*)&buffer)[7] != 1) break;
@@ -544,7 +550,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
 }
 
 /* Ensures that the block is encrypted */
-int mpeg2_check_pes_scrambling_control(uint8_t *p_block) {
+int mpeg2_check_pes_scrambling_control(uint8_t *p_block) noexcept {
   int pes_scrambling_control;
 
   pes_scrambling_control = 0;
@@ -554,13 +560,13 @@ int mpeg2_check_pes_scrambling_control(uint8_t *p_block) {
   return pes_scrambling_control;
 }
 
-void mpeg2_reset_pes_scrambling_control(uint8_t *p_block) {
+void mpeg2_reset_pes_scrambling_control(uint8_t *p_block) noexcept {
   if (IS_SYNC_CODE(p_block)) {
     p_block[20] &= 0xCD; // reset pes_scrambling_control and copyright flags;
   }
 }
 
-void mpeg2_reset_cci(uint8_t *p_block) {
+void mpeg2_reset_cci(uint8_t *p_block) noexcept {
   uint8_t *p_mlp_pcm, *p_curr;
   int pes_sid;
   int pes_len;
@@ -603,7 +609,7 @@ void mpeg2_reset_cci(uint8_t *p_block) {
 /* only the last 1920 bytes contain protected content, the first 180 bytes are
  * left untouched. */
 int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album,
-                       uint64_t media_key) {
+                       uint64_t media_key) noexcept {
   uint64_t d_kc_i, k_au, k_i, k_c;
   int encrypted;
 
@@ -644,7 +650,7 @@ int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album,
  * 1 = Decryption successful
  * 0 = Decryption failed
  */
-int is_valid_mpeg_payload(uint8_t *buffer) {
+int is_valid_mpeg_payload(uint8_t *buffer) noexcept {
   for (size_t i = 0; i < DVDCPXM_BLOCK_SIZE - 4; i++) {
     /* Look for the Start Code Prefix (00 00 01) */
     if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x01) {
@@ -661,7 +667,7 @@ int is_valid_mpeg_payload(uint8_t *buffer) {
 }
 
 int cprm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t vr_k_t,
-                       uint64_t apstb) {
+                       uint64_t apstb) noexcept {
   uint64_t d_tkc, k_i, k_c;
   int encrypted;
 
@@ -692,16 +698,17 @@ int cprm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t vr_k_t,
   return encrypted;
 }
 
-int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer, int flags) {
+int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer,
+                    int flags) noexcept {
   switch (media_type) {
   case COPYRIGHT_PROTECTION_CPPM:
-    return cppm_decrypt_block((uint8_t *)p_buffer, flags, cpxm->id_album,
-                              cpxm->media_key);
+    return cppm_decrypt_block(static_cast<uint8_t *>(p_buffer), flags,
+                              cpxm->id_album, cpxm->media_key);
   case COPYRIGHT_PROTECTION_CPRM: {
     /* return early if there is no encryption to avoid allocating 2kb */
-    if (!mpeg2_check_pes_scrambling_control((uint8_t *)p_buffer))
-      return cprm_decrypt_block((uint8_t *)p_buffer, flags, cpxm->vr_k_t,
-                                cpxm->apstb);
+    if (!mpeg2_check_pes_scrambling_control(static_cast<uint8_t *>(p_buffer)))
+      return cprm_decrypt_block(static_cast<uint8_t *>(p_buffer), flags,
+                                cpxm->vr_k_t, cpxm->apstb);
 
     /* we are not sure if apstb is correct, so we operate on a copied buffer
      * first */
@@ -745,7 +752,7 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer, int flags) {
 }
 
 /* this function is used internally */
-extern "C" int dvdcpxm_close_internal(dvdcss_t dvdcss) {
+int dvdcpxm_close_internal(dvdcss_t dvdcss) noexcept {
   dvdcss->cpxm.reset();
 
   if (g_cpxm_cache.empty())
@@ -776,7 +783,7 @@ extern "C" int dvdcpxm_close_internal(dvdcss_t dvdcss) {
 int dvdcpxm_close(dvdcss_t dvdcss) { return dvdcss_close(dvdcss); }
 
 int dvdcpxm_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks, int i_flags) {
-  uint8_t *_p_buffer = (uint8_t *)p_buffer;
+  uint8_t *_p_buffer = static_cast<uint8_t *>(p_buffer);
   int i_ret, i_index;
 
   i_ret = dvdcss->pf_read(dvdcss, _p_buffer, i_blocks);
@@ -801,7 +808,7 @@ int dvdcpxm_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
 }
 
 int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks, int i_flags) {
-  struct iovec *_p_iovec = (struct iovec *)p_iovec;
+  struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
   int i_ret, i_index;
   void *iov_base;
   size_t iov_len;
@@ -832,7 +839,7 @@ int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks, int i_flags) {
     dvdcpxm_decrypt(dvdcss->cpxm.get(), dvdcss->media_type, iov_base,
                     DVDCPXM_RESET_CCI);
 
-    iov_base = (uint8_t *)iov_base + DVDCSS_BLOCK_SIZE;
+    iov_base = static_cast<uint8_t *>(iov_base) + DVDCSS_BLOCK_SIZE;
     iov_len -= DVDCSS_BLOCK_SIZE;
   }
 

@@ -41,7 +41,7 @@
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for cppm
  *****************************************************************************/
-extern "C" int cppm_set_id_album(dvdcss_t dvdcss) {
+int cppm_set_id_album(dvdcss_t dvdcss) {
   unsigned char p_buffer[DVD_DISCKEY_SIZE];
 
   if (GetBusKey(dvdcss) < 0) {
@@ -75,7 +75,7 @@ extern "C" int cppm_set_id_album(dvdcss_t dvdcss) {
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for CPRM
  *****************************************************************************/
-extern "C" int cprm_set_id_media(dvdcss_t dvdcss) {
+int cprm_set_id_media(dvdcss_t dvdcss) {
   uint8_t p_buffer[CPRM_MEDIA_ID_SIZE + 4];
 
   if (GetBusKey(dvdcss) < 0) {

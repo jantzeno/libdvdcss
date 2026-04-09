@@ -34,22 +34,22 @@
 #ifndef _LIBDVDCPXM_H
 #define _LIBDVDCPXM_H
 
-#define COPYRIGHT_PROTECTION_NONE 0
-#define COPYRIGHT_PROTECTION_CPPM 1
-#define COPYRIGHT_PROTECTION_CPRM 2
-
-#define CPRM_STRUCT_MEDIA_ID 0x06
-#define CPRM_STRUCT_MKB 0x07
-
-#define CPRM_MEDIA_ID_SIZE 20
-#define CPRM_MKB_PACK_SIZE 24576
-#define CPRM_MKB_SIZE (16 * CPRM_MKB_PACK_SIZE - 16)
-
-#define CCI_BYTE 0x00;
-
 #include "dvdcss/dvdcpxm.h"
 #include "dvdcss/dvdcss.h"
 #include <stdint.h>
+
+inline constexpr int COPYRIGHT_PROTECTION_NONE = 0;
+inline constexpr int COPYRIGHT_PROTECTION_CPPM = 1;
+inline constexpr int COPYRIGHT_PROTECTION_CPRM = 2;
+
+inline constexpr int CPRM_STRUCT_MEDIA_ID = 0x06;
+inline constexpr int CPRM_STRUCT_MKB = 0x07;
+
+inline constexpr int CPRM_MEDIA_ID_SIZE = 20;
+inline constexpr int CPRM_MKB_PACK_SIZE = 24576;
+inline constexpr int CPRM_MKB_SIZE = 16 * CPRM_MKB_PACK_SIZE - 16;
+
+inline constexpr uint8_t CCI_BYTE = 0x00;
 
 typedef struct {
   uint8_t col;
@@ -79,12 +79,6 @@ typedef struct {
 } cprm_mkb_t;
 
 /* used to clear dvdcpxm structures, including cache */
-#ifdef __cplusplus
-extern "C" {
-#endif
-int dvdcpxm_close_internal(dvdcss_t);
-#ifdef __cplusplus
-}
-#endif
+int dvdcpxm_close_internal(dvdcss_t) noexcept;
 
 #endif

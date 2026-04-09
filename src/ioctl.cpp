@@ -32,8 +32,8 @@
  *****************************************************************************/
 #include "config.h"
 
+#include <array>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <sys/types.h>
 
@@ -95,8 +95,6 @@
 #include "ioctl.h"
 #include "libdvdcpxm.h"
 
-using std::free;
-using std::malloc;
 using std::memcpy;
 using std::memset;
 
@@ -1009,12 +1007,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   struct sg_io_hdr io_hdr = {};
   uint8_t sense[32] = {0};
   uint8_t cdb[12] = {0};
-  uint8_t *data_buf = (uint8_t *)malloc(CPRM_MEDIA_ID_SIZE + 4);
-
-  if (!data_buf)
-    i_ret = -1;
-
-  memset(data_buf, 0, CPRM_MEDIA_ID_SIZE + 4);
+  std::array<uint8_t, CPRM_MEDIA_ID_SIZE + 4> data_buf = {};
 
   cdb[0] = GPCMD_READ_DVD_STRUCTURE;
   cdb[7] = CPRM_STRUCT_MEDIA_ID;
@@ -1027,20 +1020,18 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   io_hdr.cmd_len = sizeof(cdb);
   io_hdr.mx_sb_len = sizeof(sense);
   io_hdr.dxfer_len = CPRM_MEDIA_ID_SIZE + 4;
-  io_hdr.dxferp = data_buf;
+  io_hdr.dxferp = data_buf.data();
   io_hdr.cmdp = cdb;
   io_hdr.sbp = sense;
   io_hdr.timeout = 5000;
 
   i_ret = ioctl(i_fd, SG_IO, &io_hdr);
   if (i_ret < 0 || io_hdr.status) {
-    free(data_buf);
     i_ret = -1;
+  } else {
+    memcpy(p_data_buffer, data_buf.data() + 4, CPRM_MEDIA_ID_SIZE);
+    i_ret = 0;
   }
-
-  memcpy(p_data_buffer, data_buf + 4, CPRM_MEDIA_ID_SIZE);
-  free(data_buf);
-  i_ret = 0;
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -1105,14 +1096,9 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 
 #if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
     (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
-  uint8_t *sptd_buf = (uint8_t *)malloc(CPRM_MKB_PACK_SIZE + 4);
+  std::array<uint8_t, CPRM_MKB_PACK_SIZE + 4> sptd_buf = {};
   uint8_t cdb[12] = {0};
   uint8_t sense[32] = {0};
-
-  if (!sptd_buf)
-    i_ret = -1;
-
-  memset(sptd_buf, 0, CPRM_MKB_PACK_SIZE + 4);
 
   cdb[0] = GPCMD_READ_DVD_STRUCTURE;
   cdb[2] = (uint8_t)((mkb_pack >> 24) & 0xFF);
@@ -1131,20 +1117,18 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   io_hdr.cmd_len = sizeof(cdb);
   io_hdr.mx_sb_len = sizeof(sense);
   io_hdr.dxfer_len = CPRM_MKB_PACK_SIZE + 4;
-  io_hdr.dxferp = sptd_buf;
+  io_hdr.dxferp = sptd_buf.data();
   io_hdr.cmdp = cdb;
   io_hdr.sbp = sense;
   io_hdr.timeout = 5000;
 
   i_ret = ioctl(i_fd, SG_IO, &io_hdr);
   if (i_ret < 0 || io_hdr.status) {
-    free(sptd_buf);
     i_ret = -1;
+  } else {
+    *p_total_packs = sptd_buf[3];
+    memcpy(p_mkb_pack, sptd_buf.data() + 4, CPRM_MKB_PACK_SIZE);
   }
-
-  *p_total_packs = sptd_buf[3];
-  memcpy(p_mkb_pack, sptd_buf + 4, CPRM_MKB_PACK_SIZE);
-  free(sptd_buf);
 
 #elif defined(DARWIN_DVD_IOCTL)
   int h_dvd;

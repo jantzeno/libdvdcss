@@ -145,14 +145,13 @@ using std::strncmp;
 #define mkdir(a, b) _mkdir(a)
 #endif
 
-#define CACHE_TAG_NAME "CACHEDIR.TAG"
-
-#define STRING_KEY_SIZE (DVD_KEY_SIZE * 2)
-#define INTERESTING_SECTOR 16
-#define DISC_TITLE_OFFSET 40
-#define DISC_TITLE_LENGTH 32
-#define MANUFACTURING_DATE_OFFSET 813
-#define MANUFACTURING_DATE_LENGTH 16
+inline constexpr char kCacheTagName[] = "CACHEDIR.TAG";
+inline constexpr int kStringKeySize = DVD_KEY_SIZE * 2;
+inline constexpr int kInterestingSector = 16;
+inline constexpr int kDiscTitleOffset = 40;
+inline constexpr int kDiscTitleLength = 32;
+inline constexpr int kManufacturingDateOffset = 813;
+inline constexpr int kManufacturingDateLength = 16;
 
 static int create_directories_if_needed(const std::filesystem::path &path) {
   std::error_code error;
@@ -285,9 +284,9 @@ static int set_cache_directory(dvdcss_t dvdcss) {
    * block filename. The +1s are path separators. */
   const std::string cache_directory_string = cache_directory.string();
   if (!cache_directory.empty() &&
-      cache_directory_string.size() + 1 + DISC_TITLE_LENGTH + 1 +
-              MANUFACTURING_DATE_LENGTH + 1 + STRING_KEY_SIZE + 1 +
-              sizeof(CACHE_TAG_NAME) >
+      cache_directory_string.size() + 1 + kDiscTitleLength + 1 +
+              kManufacturingDateLength + 1 + kStringKeySize + 1 +
+              sizeof(kCacheTagName) >
           PATH_MAX) {
     print_error(dvdcss, "cache directory name is too long");
     return -1;
@@ -313,7 +312,7 @@ static int init_cache_dir(dvdcss_t dvdcss) {
     return -1;
   }
 
-  const auto tagfile = dvdcss->psz_cachefile / CACHE_TAG_NAME;
+  const auto tagfile = dvdcss->psz_cachefile / kCacheTagName;
   const auto tagfile_string = tagfile.string();
   i_fd = open(tagfile_string.c_str(), O_RDWR | O_CREAT, 0644);
   if (i_fd >= 0) {
@@ -328,7 +327,7 @@ static int init_cache_dir(dvdcss_t dvdcss) {
 
 static void create_cache_subdir(dvdcss_t dvdcss) {
   uint8_t p_sector[DVDCSS_BLOCK_SIZE];
-  char psz_key[STRING_KEY_SIZE + 1];
+  char psz_key[kStringKeySize + 1];
   std::string cache_subdir;
   char *psz_title;
   uint8_t *psz_serial;
@@ -356,8 +355,8 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
    *  - offset 40: disc title (32 uppercase chars)
    *  - offset 813: manufacturing date + serial no (16 digits) */
 
-  i_ret = dvdcss->pf_seek(dvdcss, INTERESTING_SECTOR);
-  if (i_ret != INTERESTING_SECTOR) {
+  i_ret = dvdcss->pf_seek(dvdcss, kInterestingSector);
+  if (i_ret != kInterestingSector) {
     goto error;
   }
 
@@ -367,10 +366,10 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   }
 
   /* Get the disc title */
-  psz_title = (char *)p_sector + DISC_TITLE_OFFSET;
-  psz_title[DISC_TITLE_LENGTH] = '\0';
+  psz_title = reinterpret_cast<char *>(p_sector) + kDiscTitleOffset;
+  psz_title[kDiscTitleLength] = '\0';
 
-  for (i = 0; i < DISC_TITLE_LENGTH; i++) {
+  for (i = 0; i < kDiscTitleLength; i++) {
     if (psz_title[i] <= ' ') {
       psz_title[i] = '\0';
       break;
@@ -380,17 +379,17 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   }
 
   /* Get the date + serial */
-  psz_serial = p_sector + MANUFACTURING_DATE_OFFSET;
-  psz_serial[MANUFACTURING_DATE_LENGTH] = '\0';
+  psz_serial = p_sector + kManufacturingDateOffset;
+  psz_serial[kManufacturingDateLength] = '\0';
 
   /* Check that all characters are digits, otherwise convert. */
-  for (i = 0; i < MANUFACTURING_DATE_LENGTH; i++) {
+  for (i = 0; i < kManufacturingDateLength; i++) {
     if (psz_serial[i] < '0' || psz_serial[i] > '9') {
-      char psz_tmp[MANUFACTURING_DATE_LENGTH + 1];
+      char psz_tmp[kManufacturingDateLength + 1];
       sprintf(psz_tmp, "%.2x%.2x%.2x%.2x%.2x%.2x%.2x%.2x", psz_serial[0],
               psz_serial[1], psz_serial[2], psz_serial[3], psz_serial[4],
               psz_serial[5], psz_serial[6], psz_serial[7]);
-      memcpy(psz_serial, psz_tmp, MANUFACTURING_DATE_LENGTH);
+      memcpy(psz_serial, psz_tmp, kManufacturingDateLength);
       break;
     }
   }
@@ -401,7 +400,7 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
     for (i = 0; i < DVD_KEY_SIZE; i++) {
       sprintf(&psz_key[i * 2], "%.2x", dvdcss->css.p_disc_key[i]);
     }
-    psz_key[STRING_KEY_SIZE] = '\0';
+    psz_key[kStringKeySize] = '\0';
   } else {
     psz_key[0] = 0;
   }
@@ -636,7 +635,7 @@ extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
  */
 extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
                            int i_flags) {
-  uint8_t *_p_buffer = (uint8_t *)p_buffer;
+  uint8_t *_p_buffer = static_cast<uint8_t *>(p_buffer);
   int i_ret, i_index;
 
   i_ret = dvdcss->pf_read(dvdcss, _p_buffer, i_blocks);
@@ -699,7 +698,7 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
  */
 extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
                             int i_flags) {
-  struct iovec *_p_iovec = (struct iovec *)p_iovec;
+  struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
   int i_ret, i_index;
   void *iov_base;
   size_t iov_len;
@@ -727,10 +726,11 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
       iov_len = _p_iovec->iov_len;
     }
 
-    dvdcss_unscramble(dvdcss->css.p_title_key, (uint8_t *)iov_base);
-    ((uint8_t *)iov_base)[0x14] &= 0x8f;
+    auto *sector = static_cast<uint8_t *>(iov_base);
+    dvdcss_unscramble(dvdcss->css.p_title_key, sector);
+    sector[0x14] &= 0x8f;
 
-    iov_base = (uint8_t *)iov_base + DVDCSS_BLOCK_SIZE;
+    iov_base = sector + DVDCSS_BLOCK_SIZE;
     iov_len -= DVDCSS_BLOCK_SIZE;
   }
 
