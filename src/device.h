@@ -31,26 +31,24 @@
  * iovec structure: vectored data entry
  *****************************************************************************/
 #ifndef HAVE_SYS_UIO_H
-#   include <io.h>                                                 /* read() */
-struct iovec
-{
-    void *iov_base;     /* Pointer to data. */
-    size_t iov_len;     /* Length of data.  */
+#include <io.h> /* read() */
+struct iovec {
+  void *iov_base; /* Pointer to data. */
+  size_t iov_len; /* Length of data.  */
 };
 #else
-#   include <sys/types.h>
-#   include <sys/uio.h>                                      /* struct iovec */
+#include <sys/types.h>
+#include <sys/uio.h> /* struct iovec */
 #endif
 
 #include "dvdcss/dvdcss.h"
 
-
 /*****************************************************************************
  * Device reading prototypes
  *****************************************************************************/
-int  dvdcss_use_ioctls   ( dvdcss_t );
-void dvdcss_check_device ( dvdcss_t );
-int  dvdcss_open_device  ( dvdcss_t );
-int  dvdcss_close_device ( dvdcss_t );
+int dvdcss_use_ioctls(dvdcss_t);
+void dvdcss_check_device(dvdcss_t);
+int dvdcss_open_device(dvdcss_t);
+int dvdcss_close_device(dvdcss_t);
 
 #endif /* DVDCSS_DEVICE_H */

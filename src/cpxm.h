@@ -33,32 +33,31 @@
 #ifndef CPXM_H
 #define CPXM_H
 
-#include "dvdcss/dvdcss.h"
 #include "bswap.h"
+#include "dvdcss/dvdcss.h"
 #include <string.h>
 
-#define READ64_BE(dest, src) \
-    do { \
-        uint64_t __tmp; \
-        memcpy(&__tmp, (src), sizeof(uint64_t)); \
-        B2N_64(__tmp); \
-        (dest) = __tmp; \
-    } while(0)
+#define READ64_BE(dest, src)                                                   \
+  do {                                                                         \
+    uint64_t __tmp;                                                            \
+    memcpy(&__tmp, (src), sizeof(uint64_t));                                   \
+    B2N_64(__tmp);                                                             \
+    (dest) = __tmp;                                                            \
+  } while (0)
 
-typedef struct cpxm
-{
-   uint64_t media_key;
-   uint64_t id_album;
-   uint64_t id_media;
-   uint64_t vr_k_t;
-   uint64_t apstb;
+typedef struct cpxm {
+  uint64_t media_key;
+  uint64_t id_album;
+  uint64_t id_media;
+  uint64_t vr_k_t;
+  uint64_t apstb;
 } cpxm_s;
 
 /* for persistance */
-typedef cpxm_s* p_cpxm;
+typedef cpxm_s *p_cpxm;
 
 /* cpxm uses the same css authentification method when using a usb dvd drive */
-int cppm_set_id_album( dvdcss_t dvdcss );
-int cprm_set_id_media( dvdcss_t dvdcss );
+int cppm_set_id_album(dvdcss_t dvdcss);
+int cprm_set_id_media(dvdcss_t dvdcss);
 
 #endif // CPXM_H

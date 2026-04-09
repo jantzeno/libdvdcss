@@ -32,71 +32,61 @@
  */
 
 #include "cpxm.h"
-#include "libdvdcpxm.h"
-#include "ioctl.h"
 #include "css.h"
+#include "ioctl.h"
+#include "libdvdcpxm.h"
 #include "libdvdcss.h"
 #include <stddef.h>
 
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for cppm
  *****************************************************************************/
-int cppm_set_id_album( dvdcss_t dvdcss )
-{
-    unsigned char p_buffer[ DVD_DISCKEY_SIZE ];
+int cppm_set_id_album(dvdcss_t dvdcss) {
+  unsigned char p_buffer[DVD_DISCKEY_SIZE];
 
-    if( GetBusKey( dvdcss ) < 0 )
-    {
-        return -1;
-    }
+  if (GetBusKey(dvdcss) < 0) {
+    return -1;
+  }
 
-    /* Get encrypted disc key */
-    if( ioctl_ReadDiscKey( dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer ) < 0 )
-    {
-        print_error( dvdcss, "ioctl ReadDiscKey failed" );
-        return -1;
-    }
+  /* Get encrypted disc key */
+  if (ioctl_ReadDiscKey(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+    print_error(dvdcss, "ioctl ReadDiscKey failed");
+    return -1;
+  }
 
-    /* This should have invalidated the AGID and got us ASF=1. */
-    if( GetASF( dvdcss ) != 1 )
-    {
-        /* Region mismatch (or region not set) is the most likely source. */
-        print_error( dvdcss, "authentication success flag (ASF) not 1 after "
-                             "reading disc key (region mismatch?)" );
-        ioctl_InvalidateAgid( dvdcss->i_fd, &dvdcss->css.i_agid );
-        return -1;
-    }
+  /* This should have invalidated the AGID and got us ASF=1. */
+  if (GetASF(dvdcss) != 1) {
+    /* Region mismatch (or region not set) is the most likely source. */
+    print_error(dvdcss, "authentication success flag (ASF) not 1 after "
+                        "reading disc key (region mismatch?)");
+    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    return -1;
+  }
 
-    /* Shuffle disc key using bus key */
-    for( int i = 0 ; i < DVD_DISCKEY_SIZE ; i++ )
-    {
-        p_buffer[i] ^= dvdcss->css.p_bus_key[4 - (i % DVD_KEY_SIZE)];
-    }
+  /* Shuffle disc key using bus key */
+  for (int i = 0; i < DVD_DISCKEY_SIZE; i++) {
+    p_buffer[i] ^= dvdcss->css.p_bus_key[4 - (i % DVD_KEY_SIZE)];
+  }
 
-    READ64_BE( dvdcss->cpxm->id_album, &p_buffer[80] );
-    return 0;
+  READ64_BE(dvdcss->cpxm->id_album, &p_buffer[80]);
+  return 0;
 }
 
 /******************************************************************************
  * From dvdcss_disckey, Grab the album ID for CPRM
  *****************************************************************************/
-int cprm_set_id_media( dvdcss_t dvdcss )
-{
-    uint8_t p_buffer[CPRM_MEDIA_ID_SIZE + 4];
+int cprm_set_id_media(dvdcss_t dvdcss) {
+  uint8_t p_buffer[CPRM_MEDIA_ID_SIZE + 4];
 
-    if( GetBusKey( dvdcss ) < 0 )
-    {
-        return -1;
-    }
+  if (GetBusKey(dvdcss) < 0) {
+    return -1;
+  }
 
-    if( ioctl_ReadCPRMMediaId( dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer ) ) 
-        return -1;
+  if (ioctl_ReadCPRMMediaId(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer))
+    return -1;
 
-    READ64_BE( dvdcss->cpxm->id_media,
-                   p_buffer + offsetof(cprm_media_id_t, id_media)
-                   );
+  READ64_BE(dvdcss->cpxm->id_media,
+            p_buffer + offsetof(cprm_media_id_t, id_media));
 
-    return 0;
+  return 0;
 }
-
-

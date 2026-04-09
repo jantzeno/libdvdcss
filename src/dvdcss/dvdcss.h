@@ -40,35 +40,32 @@ extern "C" {
 #endif
 
 /** Library instance handle, to be used for each library call. */
-typedef struct dvdcss_s* dvdcss_t;
+typedef struct dvdcss_s *dvdcss_t;
 
 /** Set of callbacks to access DVDs in custom ways. */
-typedef struct dvdcss_stream_cb
-{
-    /** custom seek callback */
-    int ( *pf_seek )  ( void *p_stream, uint64_t i_pos);
-    /** custom read callback */
-    int ( *pf_read )  ( void *p_stream, void *buffer, int i_read);
-    /** custom vectored read callback */
-    int ( *pf_readv ) ( void *p_stream, const void *p_iovec, int i_blocks);
+typedef struct dvdcss_stream_cb {
+  /** custom seek callback */
+  int (*pf_seek)(void *p_stream, uint64_t i_pos);
+  /** custom read callback */
+  int (*pf_read)(void *p_stream, void *buffer, int i_read);
+  /** custom vectored read callback */
+  int (*pf_readv)(void *p_stream, const void *p_iovec, int i_blocks);
 } dvdcss_stream_cb;
 
-
 /** The block size of a DVD. */
-#define DVDCSS_BLOCK_SIZE      2048
+#define DVDCSS_BLOCK_SIZE 2048
 
 /** The default flag to be used by \e libdvdcss functions. */
-#define DVDCSS_NOFLAGS         0
+#define DVDCSS_NOFLAGS 0
 
 /** Flag to ask dvdcss_read() to decrypt the data it reads. */
-#define DVDCSS_READ_DECRYPT    (1 << 0)
+#define DVDCSS_READ_DECRYPT (1 << 0)
 
 /** Flag to tell dvdcss_seek() it is seeking in MPEG data. */
-#define DVDCSS_SEEK_MPEG       (1 << 0)
+#define DVDCSS_SEEK_MPEG (1 << 0)
 
 /** Flag to ask dvdcss_seek() to check the current title key. */
-#define DVDCSS_SEEK_KEY        (1 << 1)
-
+#define DVDCSS_SEEK_KEY (1 << 1)
 
 /** Macro for setting symbol storage-class or visibility.
  * Define LIBDVDCSS_IMPORTS before importing this header to get the
@@ -83,30 +80,23 @@ typedef struct dvdcss_stream_cb
 #define LIBDVDCSS_EXPORT extern
 #endif
 
-
 /*
  * Exported prototypes.
  */
-LIBDVDCSS_EXPORT dvdcss_t dvdcss_open  ( const char *psz_target );
-LIBDVDCSS_EXPORT dvdcss_t dvdcss_open_stream( void *p_stream,
-                                              dvdcss_stream_cb *p_stream_cb );
-LIBDVDCSS_EXPORT int      dvdcss_close ( dvdcss_t );
-LIBDVDCSS_EXPORT int      dvdcss_seek  ( dvdcss_t,
-                               int i_blocks,
-                               int i_flags );
-LIBDVDCSS_EXPORT int      dvdcss_read  ( dvdcss_t,
-                               void *p_buffer,
-                               int i_blocks,
-                               int i_flags );
-LIBDVDCSS_EXPORT int      dvdcss_readv ( dvdcss_t,
-                               void *p_iovec,
-                               int i_blocks,
-                               int i_flags );
-LIBDVDCSS_EXPORT const char *dvdcss_error ( const dvdcss_t );
+LIBDVDCSS_EXPORT dvdcss_t dvdcss_open(const char *psz_target);
+LIBDVDCSS_EXPORT dvdcss_t dvdcss_open_stream(void *p_stream,
+                                             dvdcss_stream_cb *p_stream_cb);
+LIBDVDCSS_EXPORT int dvdcss_close(dvdcss_t);
+LIBDVDCSS_EXPORT int dvdcss_seek(dvdcss_t, int i_blocks, int i_flags);
+LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t, void *p_buffer, int i_blocks,
+                                 int i_flags);
+LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t, void *p_iovec, int i_blocks,
+                                  int i_flags);
+LIBDVDCSS_EXPORT const char *dvdcss_error(const dvdcss_t);
 
-LIBDVDCSS_EXPORT int      dvdcss_is_scrambled ( dvdcss_t );
+LIBDVDCSS_EXPORT int dvdcss_is_scrambled(dvdcss_t);
 
-LIBDVDCSS_EXPORT int dvdcss_get_encryption_type ( dvdcss_t );
+LIBDVDCSS_EXPORT int dvdcss_get_encryption_type(dvdcss_t);
 
 #ifdef __cplusplus
 }

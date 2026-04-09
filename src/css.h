@@ -39,31 +39,29 @@
 
 typedef uint8_t dvd_key[DVD_KEY_SIZE];
 
-typedef struct dvd_title
-{
-    int               i_startlb;
-    dvd_key           p_key;
-    struct dvd_title *p_next;
+typedef struct dvd_title {
+  int i_startlb;
+  dvd_key p_key;
+  struct dvd_title *p_next;
 } dvd_title;
 
-typedef struct css
-{
-    int             i_agid;      /* Current Authentication Grant ID. */
-    dvd_key         p_bus_key;   /* Current session key. */
-    dvd_key         p_disc_key;  /* This DVD disc's key. */
-    dvd_key         p_title_key; /* Current title key. */
+typedef struct css {
+  int i_agid;          /* Current Authentication Grant ID. */
+  dvd_key p_bus_key;   /* Current session key. */
+  dvd_key p_disc_key;  /* This DVD disc's key. */
+  dvd_key p_title_key; /* Current title key. */
 } css;
 
 /*****************************************************************************
  * Prototypes in css.c
  *****************************************************************************/
-int dvdcss_test       ( dvdcss_t );
-int dvdcss_title      ( dvdcss_t, int );
-int dvdcss_disckey    ( dvdcss_t );
-int dvdcss_unscramble ( uint8_t *, uint8_t * );
+int dvdcss_test(dvdcss_t);
+int dvdcss_title(dvdcss_t, int);
+int dvdcss_disckey(dvdcss_t);
+int dvdcss_unscramble(uint8_t *, uint8_t *);
 
 /* exported for USB authentification in CPXM */
-int  GetBusKey       ( dvdcss_t );
-int  GetASF          ( dvdcss_t );
+int GetBusKey(dvdcss_t);
+int GetASF(dvdcss_t);
 
 #endif /* DVDCSS_CSS_H */

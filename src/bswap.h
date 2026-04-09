@@ -33,12 +33,13 @@
 #else /* WORDS_BIGENDIAN */
 
 #if defined(__clang__)
-# if __has_builtin (__builtin_bswap16)
-#  define BSWAP_BUILTIN 1
-# endif
+#if __has_builtin(__builtin_bswap16)
+#define BSWAP_BUILTIN 1
+#endif
 
-#elif defined (__GNUC__) && ((__GNUC__ > (4)) || (__GNUC__ == (4) && __GNUC_MINOR__ >= (8)))
-# define BSWAP_BUILTIN 1
+#elif defined(__GNUC__) &&                                                     \
+    ((__GNUC__ > (4)) || (__GNUC__ == (4) && __GNUC_MINOR__ >= (8)))
+#define BSWAP_BUILTIN 1
 #endif
 
 #if defined(BSWAP_BUILTIN)
@@ -102,24 +103,22 @@
  * functionality!
  */
 
-#elif defined(__FreeBSD__) || defined(__sun) || defined(__bsdi__) || defined(_WIN32) || defined(__CYGWIN__) || defined(__BEOS__) || defined(__OS2__)
-#define B2N_16(x)                             \
- x = ((((x) & 0xff00) >> 8) |                 \
-      (((x) & 0x00ff) << 8))
-#define B2N_32(x)                             \
- x = ((((x) & 0xff000000) >> 24) |            \
-      (((x) & 0x00ff0000) >>  8) |            \
-      (((x) & 0x0000ff00) <<  8) |            \
-      (((x) & 0x000000ff) << 24))
-#define B2N_64(x)                             \
- x = ((((x) & 0xff00000000000000ULL) >> 56) | \
-      (((x) & 0x00ff000000000000ULL) >> 40) | \
-      (((x) & 0x0000ff0000000000ULL) >> 24) | \
-      (((x) & 0x000000ff00000000ULL) >>  8) | \
-      (((x) & 0x00000000ff000000ULL) <<  8) | \
-      (((x) & 0x0000000000ff0000ULL) << 24) | \
-      (((x) & 0x000000000000ff00ULL) << 40) | \
-      (((x) & 0x00000000000000ffULL) << 56))
+#elif defined(__FreeBSD__) || defined(__sun) || defined(__bsdi__) ||           \
+    defined(_WIN32) || defined(__CYGWIN__) || defined(__BEOS__) ||             \
+    defined(__OS2__)
+#define B2N_16(x) x = ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8))
+#define B2N_32(x)                                                              \
+  x = ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |                \
+       (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24))
+#define B2N_64(x)                                                              \
+  x = ((((x) & 0xff00000000000000ULL) >> 56) |                                 \
+       (((x) & 0x00ff000000000000ULL) >> 40) |                                 \
+       (((x) & 0x0000ff0000000000ULL) >> 24) |                                 \
+       (((x) & 0x000000ff00000000ULL) >> 8) |                                  \
+       (((x) & 0x00000000ff000000ULL) << 8) |                                  \
+       (((x) & 0x0000000000ff0000ULL) << 24) |                                 \
+       (((x) & 0x000000000000ff00ULL) << 40) |                                 \
+       (((x) & 0x00000000000000ffULL) << 56))
 
 #else
 
