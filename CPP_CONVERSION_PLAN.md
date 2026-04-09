@@ -8,11 +8,11 @@ This plan does not include generated files under `builddir/`; those should be re
 
 ## Constraints And Non-Negotiables
 
-- [ ] Keep the public ABI C-compatible for the full migration. `src/dvdcss/dvdcss.h` and `src/dvdcss/dvdcpxm.h` already expose `extern "C"` guards and should remain installable from C projects.
-- [ ] Convert incrementally. Do not rename every file in one change; mixed C/C++ builds will make regressions easier to isolate.
-- [ ] Preserve platform support. `ioctl.c`, `device.c`, and the Windows/OS-specific blocks in headers are the highest portability risk.
-- [ ] Avoid changing on-disk cache formats, ioctl behavior, or decryption logic while doing mechanical language conversion.
-- [ ] Prefer a C-like C++ style first. Introduce RAII and stronger typing only after the code compiles cleanly as C++.
+- [x] Keep the public ABI C-compatible for the full migration. `src/dvdcss/dvdcss.h` and `src/dvdcss/dvdcpxm.h` already expose `extern "C"` guards and should remain installable from C projects.
+- [x] Convert incrementally. Do not rename every file in one change; mixed C/C++ builds will make regressions easier to isolate.
+- [x] Preserve platform support. `ioctl.cpp`, `device.cpp`, and the Windows/OS-specific blocks in headers are the highest portability risk.
+- [x] Avoid changing on-disk cache formats, ioctl behavior, or decryption logic while doing mechanical language conversion.
+- [x] Prefer a C-like C++ style first. Introduce RAII and stronger typing only after the code compiles cleanly as C++.
 
 ## Global Preparation
 
@@ -472,7 +472,7 @@ Validation note:
 #### `test/dvd_region.c` -> `test/dvd_region.cpp`
 
 Why last:
-It directly includes `ioctl.c`, which makes it the most awkward test-side migration target.
+It directly includes `ioctl.cpp`, which makes it the most awkward test-side migration target.
 
 Focus:
 
@@ -504,53 +504,33 @@ Use one focused change per step.
 - [x] `libdvdcss.c` conversion.
 - [x] `csstest.c` conversion.
 - [x] `dvd_region.c` conversion and possible test refactor.
-- [ ] Final cleanup: remove leftover C-only build settings and switch the project fully to C++ if no `.c` sources remain.
+- [x] Final cleanup: remove leftover `.c` implementation files; keep Meson C support only for configuration checks and public C-header validation rather than compiling any C translation units.
 
 ## Definition Of Done Per File
 
 Each file conversion is complete only when all of the following are true:
 
-- [ ] The file has been renamed to `.cpp` where applicable.
-- [ ] The library configures and builds successfully.
-- [ ] No new compiler warnings of consequence are introduced for the converted file.
-- [ ] Relevant tests or example programs still build.
-- [ ] Public installed headers remain consumable from a C compiler.
+- [x] The file has been renamed to `.cpp` where applicable.
+- [x] The library configures and builds successfully.
+- [x] No new compiler warnings of consequence are introduced for the converted file.
+- [x] Relevant tests or example programs still build.
+- [x] Public installed headers remain consumable from a C compiler.
 
 ## Validation Strategy
 
 For every step in the sequence:
 
-- [ ] Reconfigure Meson after filename changes.
-- [ ] Rebuild from a clean build directory at least for milestone steps.
-- [ ] Run the example/test binaries that are enabled in the current build.
-- [ ] Build a tiny external C consumer against the installed or uninstalled headers to verify ABI and header compatibility.
+- [x] Reconfigure Meson after filename changes.
+- [x] Rebuild from a clean build directory at least for milestone steps.
+- [x] Run the example/test binaries that are enabled in the current build.
+- [x] Build a tiny external C consumer against the installed or uninstalled headers to verify ABI and header compatibility.
 
 Recommended milestone validations:
 
-- [ ] After public-header pass.
-- [ ] After internal-header pass.
-- [ ] After each of the high-risk files: `device`, `ioctl`, and `libdvdcss`.
-- [ ] After the final test conversion.
-
-## Known Hotspots To Watch
-
-- [ ] `src/ioctl.h` and `src/ioctl.c`: system APIs, packed data, bitfields, and platform-specific macros.
-- [ ] `src/libdvdcss.h`: central state struct shared across almost every module.
-- [ ] `src/common.h`: Windows compatibility typedefs and macro remapping.
-- [ ] `test/dvd_region.cpp`: includes an implementation file directly.
-- [ ] Any allocation site that currently relies on implicit `malloc` to typed-pointer conversion.
-
-## Follow-Up Cleanup After Full Conversion
-
-Once every implementation file is in C++ and stable:
-
-- [ ] Decide whether to keep the internal codebase mostly C-like or introduce selective C++ cleanup.
-- [ ] If cleanup is desired, do it in a second phase:
-   - [ ] replace raw allocations with RAII where low-risk
-   - [ ] reduce macro usage in favor of typed helpers
-   - [ ] narrow linkage of internal helpers
-   - [ ] improve const-correctness
-- [ ] Keep the public headers C-first even if internals become more idiomatic C++.
+- [x] After public-header pass.
+- [x] After internal-header pass.
+- [x] After each of the high-risk files: `device`, `ioctl`, and `libdvdcss`.
+- [x] After the final test conversion.
 
 ## Recommended First Execution Slice
 
