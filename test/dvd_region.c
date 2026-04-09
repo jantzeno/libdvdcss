@@ -22,8 +22,8 @@
 #include "ioctl.h"
 #include "libdvdcss.h"
 
-/* On non-Linux platforms static functions from ioctl.c are used. */
-#include "ioctl.c"
+/* On non-Linux platforms static functions from ioctl.cpp are used. */
+#include "ioctl.cpp"
 
 #define DEFAULT_DEVICE "/dev/dvd"
 

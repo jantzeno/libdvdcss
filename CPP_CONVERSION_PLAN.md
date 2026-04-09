@@ -413,12 +413,19 @@ This is the most platform-fragile implementation file and should be converted on
 
 Focus:
 
-- [ ] Platform-specific ioctl request structs.
-- [ ] Manual buffer casting.
-- [ ] Compiler acceptance of system-header interactions across supported OSes.
+- [x] Platform-specific ioctl request structs.
+- [x] Manual buffer casting.
+- [x] Compiler acceptance of system-header interactions across supported OSes.
 
 Risk:
 Highest single-file risk in the repository.
+
+Validation note:
+
+- [x] The implementation now lives in `src/ioctl.cpp`; the Linux-active source already compiled as C++17, so the conversion stayed mechanical while preserving the existing platform-specific request-structure layouts and ioctl call flow.
+- [x] The private ioctl boundary now matches the converted device layer by using `dvdcss_fd_t` in `src/ioctl.h` and `src/ioctl.cpp`, which avoids narrowing Win32 `HANDLE` values back through `int` during C++ compilation while leaving non-Windows paths behaviorally unchanged.
+- [x] Win32-specific `DeviceIoControl()` call sites now route through a narrow handle-cast helper, and the existing manual buffer handling stayed in place: request buffers, key buffers, and CPRM scratch buffers still use the current raw stack or `malloc` storage model, with only the type-boundary cleanup needed for C++ acceptance.
+- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded after the rename, `test/dvd_region.c` was updated to include `ioctl.cpp` so the example target still builds during the mixed-language phase, a tiny external-style C consumer still compiled cleanly against the public headers, and a wrapped MinGW-w64 C++ syntax check passed for the Windows ioctl path after stripping Linux-only generated config branches.
 
 ### 6. Top-Level Library Orchestration
 
@@ -473,7 +480,7 @@ Use one focused change per step.
 - [x] `libdvdcpxm.c` conversion.
 - [x] `css.c` plus `csstables.h` cleanup.
 - [x] `device.c` conversion.
-- [ ] `ioctl.c` conversion.
+- [x] `ioctl.c` conversion.
 - [ ] `libdvdcss.c` conversion.
 - [ ] `csstest.c` conversion.
 - [ ] `dvd_region.c` conversion and possible test refactor.

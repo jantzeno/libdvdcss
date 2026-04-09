@@ -1,5 +1,5 @@
 /*****************************************************************************
- * ioctl.c: DVD ioctl replacement function
+ * ioctl.cpp: DVD ioctl replacement function
  *****************************************************************************
  * Copyright (C) 1999-2001 VideoLAN
  *
