@@ -152,8 +152,14 @@ Low risk, but verify generation still works unchanged when the project becomes m
 
 Work:
 
-- [ ] No substantive API changes expected.
-- [ ] Only touch if C++ compilation reveals macro or include-order issues.
+- [x] No substantive API changes expected.
+- [x] Only touch if C++ compilation reveals macro or include-order issues.
+
+Validation note:
+
+- [x] No template changes were required: `src/dvdcss/version.h.in` still expands to a language-agnostic macro header with numeric version components, a string literal, and a pure macro `DVDCSS_VERSION_CODE()` helper.
+- [x] The generated `builddir/src/dvdcss/version.h` compiled successfully as a standalone C and C++ header, and its computed `DVDCSS_VERSION` value matched the expanded major/minor/micro macros.
+- [x] Include-order checks passed when `dvdcss/version.h` and `dvdcss/dvdcss.h` were included in either order, and MinGW-w64 C++ syntax checks also passed for the generated header.
 
 ### 2. Internal Header Layer
 
