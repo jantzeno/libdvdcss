@@ -256,8 +256,14 @@ Shares CPXM state and macros with both the public and private implementation lay
 
 Work:
 
-- [ ] Make the `READ64_BE` macro safe under C++.
-- [ ] Ensure `p_cpxm` and related typedefs stay plain-data friendly.
+- [x] Make the `READ64_BE` macro safe under C++.
+- [x] Ensure `p_cpxm` and related typedefs stay plain-data friendly.
+
+Validation note:
+
+- [x] `READ64_BE` compiled cleanly in C++ for both direct `uint64_t` destinations and struct-member lvalues, using byte-array and byte-pointer sources without relying on aliasing-unsafe casts.
+- [x] The `WORDS_BIGENDIAN` path also compiled cleanly through `cpxm.h`, confirming that the macro remains valid regardless of which `B2N_64` branch is active.
+- [x] `cpxm_s` remains a trivial standard-layout struct with five contiguous `uint64_t` fields, and `p_cpxm` remains a plain pointer typedef suitable for the current C-style state management.
 
 #### `src/libdvdcpxm.h`
 
