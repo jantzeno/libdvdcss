@@ -374,8 +374,14 @@ It likely exists only to support CSS lookup-table logic.
 
 Focus:
 
-- [ ] Ensure constant table declarations remain usable from C++.
-- [ ] Prefer `static const` or `constexpr` only if object layout and linkage remain compatible with the current usage.
+- [x] Ensure constant table declarations remain usable from C++.
+- [x] Prefer `static const` or `constexpr` only if object layout and linkage remain compatible with the current usage.
+
+Validation note:
+
+- [x] `src/csstables.h` already compiles cleanly as a standalone C++ header, and focused size checks confirmed the existing lookup tables keep their expected dimensions, including the 512-byte `p_css_tab3` table and the 288-byte `p_crypt_tab3` table.
+- [x] The current `static const uint8_t` table declarations remain appropriate for the mixed-language phase: they preserve internal linkage per translation unit, keep the existing object representation unchanged, and do not require a `constexpr` rewrite to satisfy C++ consumers.
+- [x] Native GCC C++17 and MinGW-w64 C++17 both accepted the header unchanged, confirming that the CSS table declarations remain portable and usable from the newly converted `css.cpp` path.
 
 ### 5. Device And I/O Layer
 
@@ -458,7 +464,7 @@ Use one focused change per step.
 - [x] `error.c` conversion.
 - [x] `cpxm.c` conversion.
 - [x] `libdvdcpxm.c` conversion.
-- [ ] `css.c` plus `csstables.h` cleanup.
+- [x] `css.c` plus `csstables.h` cleanup.
 - [ ] `device.c` conversion.
 - [ ] `ioctl.c` conversion.
 - [ ] `libdvdcss.c` conversion.
