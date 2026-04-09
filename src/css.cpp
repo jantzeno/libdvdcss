@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <optional>
 #include <span>
 #include <sys/types.h>
 #include <vector>
@@ -50,6 +51,7 @@
 #include "css.h"
 #include "csstables.h"
 #include "device.h"
+#include "expected_compat.h"
 #include "ioctl.h"
 #include "libdvdcss.h"
 
@@ -71,7 +73,8 @@ static void CryptKey(int, int, std::span<const uint8_t>, std::span<uint8_t>);
 static void DecryptKey(uint8_t, std::span<const uint8_t>,
                        std::span<const uint8_t>, std::span<uint8_t>);
 
-static int DecryptDiscKey(dvdcss_t, std::span<const uint8_t>, dvdcss_key &);
+static std::optional<dvdcss_key> DecryptDiscKey(dvdcss_t,
+                                                std::span<const uint8_t>);
 static int CrackDiscKey(std::span<uint8_t>);
 
 static void DecryptTitleKey(const dvdcss_key &, dvdcss_key &);
@@ -86,6 +89,18 @@ static int  AttackPadding   ( const uint8_t[] );
 #endif
 
 static int dvdcss_titlekey(dvdcss_t, int, dvdcss_key &);
+
+enum class title_key_read_error {
+  authentication_failed,
+  read_failed,
+  authentication_flag_lost,
+  authentication_flag_unavailable,
+};
+
+using title_key_read_result =
+    dvdcss_compat::expected<std::optional<dvdcss_key>, title_key_read_error>;
+
+static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t, int);
 
 static std::filesystem::path build_cache_block_path(const dvdcss_t dvdcss,
                                                     int i_block) {
@@ -346,7 +361,9 @@ int dvdcss_disckey(dvdcss_t dvdcss) {
 
     /* Decrypt disc key with player key. */
     PrintKey(dvdcss, "decrypting disc key ", std::span{p_buffer});
-    if (!DecryptDiscKey(dvdcss, std::span{p_buffer}, p_disc_key)) {
+    if (const auto decrypted_disc_key =
+            DecryptDiscKey(dvdcss, std::span{p_buffer})) {
+      p_disc_key = *decrypted_disc_key;
       PrintKey(dvdcss, "decrypted disc key is ", std::span{p_disc_key});
       break;
     }
@@ -392,7 +409,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
                            dvdcss_key &p_title_key) {
   static uint8_t p_garbage[DVDCSS_BLOCK_SIZE]; /* we never read it back */
   dvdcss_key p_key = {};
-  int i, i_ret = 0;
+  int i_ret = 0;
 
   if (dvdcss->b_ioctls && (dvdcss->i_method == dvdcss_method::key ||
                            dvdcss->i_method == dvdcss_method::disc)) {
@@ -402,82 +419,41 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
 
     print_debug(dvdcss, "getting title key at block %i the classic way", i_pos);
 
-    /* We need to authenticate again every time to get a new session key */
-    if (GetBusKey(dvdcss) < 0) {
-      i_ret = -1;
+    const auto title_key = ReadTitleKeyWithIoctls(dvdcss, i_pos);
+    if (title_key) {
+      const auto &maybe_title_key = title_key.value();
+      p_title_key = maybe_title_key.value_or(dvdcss_key{});
+      PrintKey(dvdcss, "title key is ", std::span{p_title_key});
+      return maybe_title_key ? 1 : 0;
     }
 
-    /* Get encrypted title key */
-    if (ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos,
-                           std::span{p_key}) < 0) {
-      print_debug(dvdcss, "ioctl ReadTitleKey failed (region mismatch?)");
-      i_ret = -1;
-    }
-
-    /* Test ASF, it will be reset to 0 if we got a Region error */
-    switch (GetASF(dvdcss)) {
-    case -1:
-      /* An error getting the ASF status, something must be wrong. */
+    switch (title_key.error()) {
+    case title_key_read_error::authentication_flag_unavailable:
       print_debug(
           dvdcss,
           "lost authentication success flag (ASF), requesting title key");
       static_cast<void>(
           ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
-      i_ret = -1;
       break;
-
-    case 0:
-      /* This might either be a title that has no key,
-       * or we encountered a region error. */
+    case title_key_read_error::authentication_flag_lost:
       print_debug(
           dvdcss,
           "lost authentication success flag (ASF), requesting title key");
       break;
-
-    case 1:
-      /* Drive status is OK. */
-      /* If the title key request failed, but we did not lose ASF,
-       * we might still have the AGID.  Other code assumes that we
-       * will not after this so invalidate it(?). */
-      if (i_ret < 0) {
-        static_cast<void>(
-            ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
-      }
+    case title_key_read_error::read_failed:
+      static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
       break;
-    }
-
-    if (!(i_ret < 0)) {
-      /* Decrypt title key using the bus key */
-      for (i = 0; i < DVD_KEY_SIZE; i++) {
-        p_key[i] ^= dvdcss->css.p_bus_key[4 - (i % DVD_KEY_SIZE)];
-      }
-
-      /* If p_key is all zero then there really wasn't any key present
-       * even though we got to read it without an error. */
-      if (p_key == dvdcss_key{}) {
-        i_ret = 0;
-      } else {
-        PrintKey(dvdcss, "initial disc key ",
-                 std::span{dvdcss->css.p_disc_key});
-        DecryptTitleKey(dvdcss->css.p_disc_key, p_key);
-        PrintKey(dvdcss, "decrypted title key ", std::span{p_key});
-        i_ret = 1;
-      }
-
-      /* All went well either there wasn't a key or we have it now. */
-      p_title_key = p_key;
-      PrintKey(dvdcss, "title key is ", std::span{p_title_key});
-
-      return i_ret;
+    case title_key_read_error::authentication_failed:
+      break;
     }
 
     /* The title key request failed */
     print_debug(dvdcss, "resetting drive and cracking title key");
 
     /* Read an unscrambled sector and reset the drive */
-    dvdcss->device_strategy.seek(dvdcss, 0);
-    dvdcss->device_strategy.read(dvdcss, p_garbage, 1);
-    dvdcss->device_strategy.seek(dvdcss, 0);
+    static_cast<void>(dvdcss->device_strategy.seek(dvdcss, 0));
+    static_cast<void>(dvdcss->device_strategy.read(dvdcss, p_garbage, 1));
+    static_cast<void>(dvdcss->device_strategy.seek(dvdcss, 0));
     static_cast<void>(dvdcss_disckey(dvdcss));
 
     /* Fallback */
@@ -998,9 +974,9 @@ static const dvdcss_key player_keys[] = {
  * p_struct_disckey: the 2048 byte DVD_STRUCT_DISCKEY data
  * p_disc_key: result, the 5 byte disc key
  *****************************************************************************/
-static int DecryptDiscKey(dvdcss_t dvdcss,
-                          std::span<const uint8_t> p_struct_disckey,
-                          dvdcss_key &p_disc_key) {
+static std::optional<dvdcss_key> DecryptDiscKey(
+    dvdcss_t dvdcss, std::span<const uint8_t> p_struct_disckey) {
+  dvdcss_key p_disc_key = {};
   dvdcss_key p_verify = {};
   unsigned int i, n = 0;
 
@@ -1022,15 +998,65 @@ static int DecryptDiscKey(dvdcss_t dvdcss,
 
       /* If the position / player key pair worked then return. */
       if (p_disc_key == p_verify) [[unlikely]] {
-        return 0;
+        return p_disc_key;
       }
     }
   }
 
   /* Have tried all combinations of positions and keys,
    * and we still didn't succeed. */
-  p_disc_key.fill(0);
-  return -1;
+  return std::nullopt;
+}
+
+static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss, int i_pos) {
+  dvdcss_key p_key = {};
+
+  /* We need to authenticate again every time to get a new session key. */
+  if (GetBusKey(dvdcss) < 0) {
+    return dvdcss_compat::unexpected{
+        title_key_read_error::authentication_failed};
+  }
+
+  const bool read_failed =
+      ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos,
+                         std::span{p_key}) < 0;
+  if (read_failed) {
+    print_debug(dvdcss, "ioctl ReadTitleKey failed (region mismatch?)");
+  }
+
+  /* Test ASF, it will be reset to 0 if we got a Region error. */
+  switch (GetASF(dvdcss)) {
+  case -1:
+    return dvdcss_compat::unexpected{
+        title_key_read_error::authentication_flag_unavailable};
+  case 0:
+    if (read_failed) {
+      return dvdcss_compat::unexpected{
+          title_key_read_error::authentication_flag_lost};
+    }
+    break;
+  case 1:
+    if (read_failed) {
+      return dvdcss_compat::unexpected{title_key_read_error::read_failed};
+    }
+    break;
+  }
+
+  /* Decrypt title key using the bus key. */
+  for (int i = 0; i < DVD_KEY_SIZE; i++) {
+    p_key[i] ^= dvdcss->css.p_bus_key[4 - (i % DVD_KEY_SIZE)];
+  }
+
+  /* If p_key is all zero then there really wasn't any key present
+   * even though we got to read it without an error. */
+  if (p_key == dvdcss_key{}) {
+    return std::optional<dvdcss_key>{};
+  }
+
+  PrintKey(dvdcss, "initial disc key ", std::span{dvdcss->css.p_disc_key});
+  DecryptTitleKey(dvdcss->css.p_disc_key, p_key);
+  PrintKey(dvdcss, "decrypted title key ", std::span{p_key});
+  return std::optional<dvdcss_key>{p_key};
 }
 
 /*****************************************************************************

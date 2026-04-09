@@ -51,6 +51,7 @@
 #include <array>
 #include <list>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -66,6 +67,16 @@ struct cpxm_cache_entry {
 };
 
 static std::list<cpxm_cache_entry> g_cpxm_cache;
+
+[[nodiscard]] static std::optional<cpxm_s> find_cached_cpxm(dev_t device_id) {
+  for (const auto &cache_entry : g_cpxm_cache) {
+    if (cache_entry.st_dev == device_id) {
+      return cache_entry.cpxm;
+    }
+  }
+
+  return std::nullopt;
+}
 
 /* these values are used by libdvdcpxm to process the Media Key Block */
 /* They are present inside DVD-Audio players and are used in conjunction with
@@ -499,22 +510,16 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
   if (!p_input) {
     struct stat file_stat;
     fstat(dvdcss->i_fd, &file_stat);
-    for (const auto &cache_entry : g_cpxm_cache) {
-      /* look for match in cache */
-      if (file_stat.st_dev == cache_entry.st_dev) {
-        dvdcss->cpxm = std::make_unique<cpxm_s>(cache_entry.cpxm);
-        dvdcss->cpxm_was_cached = 0;
-        return dvdcss->media_type;
-      }
+    if (const auto cached_cpxm = find_cached_cpxm(file_stat.st_dev)) {
+      dvdcss->cpxm = std::make_unique<cpxm_s>(*cached_cpxm);
+      dvdcss->cpxm_was_cached = 0;
+      return dvdcss->media_type;
     }
     return -1;
   }
 
-  auto cpxm = std::make_unique<cpxm_s>();
-  if (!cpxm)
-    return -1;
-
-  dvdcss->cpxm = std::move(cpxm);
+  dvdcss->cpxm = std::make_unique<cpxm_s>();
+  auto &cpxm = *dvdcss->cpxm;
 
   int ret = -1;
 
@@ -548,8 +553,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
       }
 
       /* get the media unique key */
-      uint64_t k_mu =
-          c2_g(cpxm->media_key, cpxm->id_media) & 0x00ffffffffffffff;
+      uint64_t k_mu = c2_g(cpxm.media_key, cpxm.id_media) & 0x00ffffffffffffff;
 
       /* decrypt the encrypted title key */
       uint64_t k_te;
@@ -557,7 +561,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
       uint64_t k_t = c2_dec(k_mu, k_te) & 0x00ffffffffffffff;
 
       /* store decrypted title key for vr decryption */
-      cpxm->vr_k_t = k_t;
+      cpxm.vr_k_t = k_t;
     }
     break;
   }
@@ -565,7 +569,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
   /* store in cache */
   struct stat stat;
   fstat(dvdcss->i_fd, &stat);
-  g_cpxm_cache.push_back({*dvdcss->cpxm, stat.st_dev});
+  g_cpxm_cache.push_back({cpxm, stat.st_dev});
   dvdcss->cpxm_was_cached = 1;
   return dvdcss->media_type;
 }

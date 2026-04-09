@@ -95,8 +95,8 @@
 
 ### Error handling internals
 
-- [ ] Use `std::optional<T>` for internal functions that currently return sentinel values (e.g., cache lookups, key retrieval)
-- [ ] Use `std::expected<T, ErrorCode>` (C++23, or a polyfill) for functions with rich error information if warranted
+- [x] Use `std::optional<T>` for internal functions that currently return sentinel values (e.g., cache lookups, key retrieval)
+- [x] Use `std::expected<T, ErrorCode>` (C++23, or a polyfill) for functions with rich error information if warranted
 
 ### Namespace & linkage
 
@@ -106,7 +106,7 @@
 
 ## Phase 4 — Cleanup & Validation
 
-- [ ] Remove `c` from `project()` languages in `meson.build` (keep only for public header install-test if desired)
+- [x] Remove `c` from `project()` languages in `meson.build` (keep only for public header install-test if desired)
 - [ ] Remove C-only compatibility shims (`MALLOC_CAST`, etc.) if any survive
 - [x] Audit all `#include` directives: replace C headers (`<string.h>`, `<stdlib.h>`, `<stdio.h>`) with C++ equivalents (`<cstring>`, `<cstdlib>`, `<cstdio>`) in implementation files
 - [ ] Run AddressSanitizer + UBSan on test/example binaries to validate no regressions
