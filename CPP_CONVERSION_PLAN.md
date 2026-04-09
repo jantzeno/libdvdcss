@@ -217,11 +217,17 @@ Declares `struct iovec` fallback logic and device entry points.
 
 Work:
 
-- [ ] Validate the fallback `iovec` definition under C++.
-- [ ] Ensure include ordering and `size_t` visibility stay correct.
+- [x] Validate the fallback `iovec` definition under C++.
+- [x] Ensure include ordering and `size_t` visibility stay correct.
 
 Risk:
 Medium because platform headers vary.
+
+Validation note:
+
+- [x] `src/device.h` now includes `<stddef.h>` before the fallback `struct iovec` branch so `size_t` is provided explicitly instead of relying on platform header side effects.
+- [x] Standalone C++ validation passed on the active `sys/uio.h` path, and a forced fallback build under `x86_64-w64-mingw32-g++` also accepted the local `struct iovec` declaration after undefining `HAVE_SYS_UIO_H`.
+- [x] No layout or signature changes were required for the device entry points; the change is limited to making the fallback type definition self-contained under mixed-language builds.
 
 #### `src/ioctl.h`
 
