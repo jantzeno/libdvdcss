@@ -335,7 +335,7 @@ int dvdcss_disckey(dvdcss_t dvdcss) {
     /* Region mismatch (or region not set) is the most likely source. */
     print_error(dvdcss, "authentication success flag (ASF) not 1 after "
                         "reading disc key (region mismatch?)");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
@@ -425,7 +425,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
       print_debug(
           dvdcss,
           "lost authentication success flag (ASF), requesting title key");
-      (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+      static_cast<void>(
+          ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
       i_ret = -1;
       break;
 
@@ -443,7 +444,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
        * we might still have the AGID.  Other code assumes that we
        * will not after this so invalidate it(?). */
       if (i_ret < 0) {
-        (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+        static_cast<void>(
+            ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
       }
       break;
     }
@@ -479,7 +481,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
     dvdcss->pf_seek(dvdcss, 0);
     dvdcss->pf_read(dvdcss, p_garbage, 1);
     dvdcss->pf_seek(dvdcss, 0);
-    (void)dvdcss_disckey(dvdcss);
+    static_cast<void>(dvdcss_disckey(dvdcss));
 
     /* Fallback */
   }
@@ -577,7 +579,7 @@ int GetBusKey(dvdcss_t dvdcss) {
      * Invalidating an AGID could make another process fail somewhere
      * in its authentication process. */
     dvdcss->css.i_agid = i;
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
 
     print_debug(dvdcss, "requesting authentication grant ID (AGID)");
     i_ret = ioctl_ReportAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
@@ -602,14 +604,14 @@ int GetBusKey(dvdcss_t dvdcss) {
   /* Send challenge to LU */
   if (ioctl_SendChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl SendChallenge failed");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
   /* Get key1 from LU */
   if (ioctl_ReportKey1(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl ReportKey1 failed");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
@@ -621,7 +623,7 @@ int GetBusKey(dvdcss_t dvdcss) {
   for (i = 0; i < 32; ++i) {
     CryptKey(0, i, p_challenge, p_key_check.data());
 
-    if (p_key_check == p_key1) {
+    if (p_key_check == p_key1) [[unlikely]] {
       print_debug(dvdcss, "drive authenticated, using variant %d", i);
       i_variant = i;
       break;
@@ -630,14 +632,14 @@ int GetBusKey(dvdcss_t dvdcss) {
 
   if (i == 32) {
     print_error(dvdcss, "drive would not authenticate");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
   /* Get challenge from LU */
   if (ioctl_ReportChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl ReportKeyChallenge failed");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
@@ -656,7 +658,7 @@ int GetBusKey(dvdcss_t dvdcss) {
   /* Send key2 to LU */
   if (ioctl_SendKey2(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl SendKey2 failed");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
@@ -1010,7 +1012,7 @@ static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
       DecryptKey(0, p_disc_key.data(), p_struct_disckey, p_verify.data());
 
       /* If the position / player key pair worked then return. */
-      if (p_disc_key == p_verify) {
+      if (p_disc_key == p_verify) [[unlikely]] {
         return 0;
       }
     }
@@ -1174,7 +1176,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
 
         /* test first possible out2[4] */
         tmp4 = (out2[0] << 16) | (out2[1] << 8) | out2[4];
-        if (tmp4 >= kBigTableSize) {
+        if (tmp4 >= kBigTableSize) [[unlikely]] {
           ret = -1;
           goto error;
         }
@@ -1187,8 +1189,8 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         B[2] = p_css_tab1[B[3]] ^ k[3] ^ C[3];
         k[2] = p_disc_key[1] ^ p_css_tab1[p_disc_key[2]] ^ B[2];
 
-        if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) {
-          if (!investigate(&p_disc_key[0], &C[0])) {
+        if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) [[unlikely]] {
+          if (!investigate(&p_disc_key[0], &C[0])) [[unlikely]] {
             goto end;
           }
         }
@@ -1196,7 +1198,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         /* Test second possible out2[4] */
         out2[4] = (out2[4] + 0xff) & 0xff;
         tmp4 = (out2[0] << 16) | (out2[1] << 8) | out2[4];
-        if (tmp4 >= kBigTableSize) {
+        if (tmp4 >= kBigTableSize) [[unlikely]] {
           ret = -1;
           goto error;
         }
@@ -1209,8 +1211,8 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         B[2] = p_css_tab1[B[3]] ^ k[3] ^ C[3];
         k[2] = p_disc_key[1] ^ p_css_tab1[p_disc_key[2]] ^ B[2];
 
-        if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) {
-          if (!investigate(&p_disc_key[0], &C[0])) {
+        if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) [[unlikely]] {
+          if (!investigate(&p_disc_key[0], &C[0])) [[unlikely]] {
             goto end;
           }
         }
@@ -1287,14 +1289,14 @@ static int RecoverTitleKey(int i_start, const uint8_t *p_crypted,
       i_t3 = (i_t3 << 8) | i_t6;
       i_t6 = p_css_tab4[i_t6];
       i_t5 += i_t6 + i_t4;
-      if ((i_t5 & 0xff) != p_buffer[i]) {
+      if ((i_t5 & 0xff) != p_buffer[i]) [[likely]] {
         break;
       }
 
       i_t5 >>= 8;
     }
 
-    if (i == 10) {
+    if (i == 10) [[unlikely]] {
       /* Do 4 backwards steps of iterating t3 to deduce initial state */
       i_t3 = i_candidate;
       for (i = 0; i < 4; i++) {

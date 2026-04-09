@@ -59,7 +59,7 @@ int cppm_set_id_album(dvdcss_t dvdcss) {
     /* Region mismatch (or region not set) is the most likely source. */
     print_error(dvdcss, "authentication success flag (ASF) not 1 after "
                         "reading disc key (region mismatch?)");
-    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 

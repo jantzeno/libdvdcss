@@ -22,125 +22,91 @@
 #ifndef LIBDVDREAD_BSWAP_H
 #define LIBDVDREAD_BSWAP_H
 
+#include <array>
+#include <bit>
 #include <config.h>
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
 
-#define B2N_NOP(x)                                                             \
-  do {                                                                         \
-    (void)(x);                                                                 \
-  } while (0)
+template <typename T> constexpr T b2n_fallback_byteswap(T value) noexcept {
+  static_assert(std::is_integral_v<T>);
 
-#define B2N_ASSIGN(x, expr)                                                    \
-  do {                                                                         \
-    (x) = (expr);                                                              \
-  } while (0)
+  auto bytes = std::bit_cast<std::array<std::byte, sizeof(T)>>(value);
+  for (std::size_t i = 0; i < bytes.size() / 2; ++i) {
+    const auto opposite = bytes.size() - 1 - i;
+    const auto tmp = bytes[i];
+    bytes[i] = bytes[opposite];
+    bytes[opposite] = tmp;
+  }
 
-#if defined(WORDS_BIGENDIAN)
-/* All bigendian systems are fine, just ignore the swaps. */
-#define B2N_16(x) B2N_NOP(x)
-#define B2N_32(x) B2N_NOP(x)
-#define B2N_64(x) B2N_NOP(x)
+  return std::bit_cast<T>(bytes);
+}
 
-#else /* WORDS_BIGENDIAN */
-
+constexpr std::uint16_t b2n_builtin_byteswap(std::uint16_t value) noexcept {
 #if defined(__clang__)
 #if __has_builtin(__builtin_bswap16)
-#define BSWAP_BUILTIN 1
-#endif
-
-#elif defined(__GNUC__) &&                                                     \
-    ((__GNUC__ > (4)) || (__GNUC__ == (4) && __GNUC_MINOR__ >= (8)))
-#define BSWAP_BUILTIN 1
-#endif
-
-#if defined(BSWAP_BUILTIN)
-
-#define B2N_16(x) B2N_ASSIGN(x, __builtin_bswap16(x))
-#define B2N_32(x) B2N_ASSIGN(x, __builtin_bswap32(x))
-#define B2N_64(x) B2N_ASSIGN(x, __builtin_bswap64(x))
-
-#else /* BSWAP_BUILTIN */
-
-/* For __FreeBSD_version */
-#if defined(HAVE_SYS_PARAM_H)
-#include <sys/param.h>
-#endif
-
-#if defined(__linux__) || defined(__GLIBC__)
-#include <byteswap.h>
-#define B2N_16(x) B2N_ASSIGN(x, bswap_16(x))
-#define B2N_32(x) B2N_ASSIGN(x, bswap_32(x))
-#define B2N_64(x) B2N_ASSIGN(x, bswap_64(x))
-
-#elif defined(__APPLE__)
-#include <libkern/OSByteOrder.h>
-#define B2N_16(x) B2N_ASSIGN(x, OSSwapBigToHostInt16(x))
-#define B2N_32(x) B2N_ASSIGN(x, OSSwapBigToHostInt32(x))
-#define B2N_64(x) B2N_ASSIGN(x, OSSwapBigToHostInt64(x))
-
-#elif defined(__NetBSD__)
-#include <sys/endian.h>
-#define B2N_16(x) B2N_ASSIGN(x, BE16TOH(x))
-#define B2N_32(x) B2N_ASSIGN(x, BE32TOH(x))
-#define B2N_64(x) B2N_ASSIGN(x, BE64TOH(x))
-
-#elif defined(__OpenBSD__)
-#include <sys/endian.h>
-#define B2N_16(x) B2N_ASSIGN(x, swap16(x))
-#define B2N_32(x) B2N_ASSIGN(x, swap32(x))
-#define B2N_64(x) B2N_ASSIGN(x, swap64(x))
-
-#elif defined(__FreeBSD__) && __FreeBSD_version >= 470000
-#include <sys/endian.h>
-#define B2N_16(x) B2N_ASSIGN(x, be16toh(x))
-#define B2N_32(x) B2N_ASSIGN(x, be32toh(x))
-#define B2N_64(x) B2N_ASSIGN(x, be64toh(x))
-
-#elif defined(__QNXNTO__)
-#include <gulliver.h>
-#define B2N_16(x) B2N_ASSIGN(x, ENDIAN_RET16(x))
-#define B2N_32(x) B2N_ASSIGN(x, ENDIAN_RET32(x))
-#define B2N_64(x) B2N_ASSIGN(x, ENDIAN_RET64(x))
-
-#elif defined(__DragonFly__)
-#include <sys/endian.h>
-#define B2N_16(x) B2N_ASSIGN(x, bswap16(x))
-#define B2N_32(x) B2N_ASSIGN(x, bswap32(x))
-#define B2N_64(x) B2N_ASSIGN(x, bswap64(x))
-
-/* This is a slow but portable implementation, it has multiple evaluation
- * problems so beware.
- * Old FreeBSD's and Solaris don't have <byteswap.h> or any other such
- * functionality!
- */
-
-#elif defined(__FreeBSD__) || defined(__sun) || defined(__bsdi__) ||           \
-    defined(_WIN32) || defined(__CYGWIN__) || defined(__BEOS__) ||             \
-    defined(__OS2__)
-#define B2N_16(x) B2N_ASSIGN(x, ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8)))
-#define B2N_32(x)                                                              \
-  B2N_ASSIGN(x, ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |      \
-                 (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24)))
-#define B2N_64(x)                                                              \
-  B2N_ASSIGN(x, ((((x) & 0xff00000000000000ULL) >> 56) |                       \
-                 (((x) & 0x00ff000000000000ULL) >> 40) |                       \
-                 (((x) & 0x0000ff0000000000ULL) >> 24) |                       \
-                 (((x) & 0x000000ff00000000ULL) >> 8) |                        \
-                 (((x) & 0x00000000ff000000ULL) << 8) |                        \
-                 (((x) & 0x0000000000ff0000ULL) << 24) |                       \
-                 (((x) & 0x000000000000ff00ULL) << 40) |                       \
-                 (((x) & 0x00000000000000ffULL) << 56)))
-
+  return __builtin_bswap16(value);
 #else
-
-/* If there isn't a header provided with your system with this functionality
- * add the relevant || define( ) to the portable implementation above.
- */
-#error "You need to add endian swap macros for your system"
-
+  return b2n_fallback_byteswap(value);
 #endif
+#elif defined(__GNUC__)
+  return __builtin_bswap16(value);
+#else
+  return b2n_fallback_byteswap(value);
+#endif
+}
 
-#endif /* BSWAP_BUILTIN */
+constexpr std::uint32_t b2n_builtin_byteswap(std::uint32_t value) noexcept {
+#if defined(__clang__)
+#if __has_builtin(__builtin_bswap32)
+  return __builtin_bswap32(value);
+#else
+  return b2n_fallback_byteswap(value);
+#endif
+#elif defined(__GNUC__)
+  return __builtin_bswap32(value);
+#else
+  return b2n_fallback_byteswap(value);
+#endif
+}
 
-#endif /* WORDS_BIGENDIAN */
+constexpr std::uint64_t b2n_builtin_byteswap(std::uint64_t value) noexcept {
+#if defined(__clang__)
+#if __has_builtin(__builtin_bswap64)
+  return __builtin_bswap64(value);
+#else
+  return b2n_fallback_byteswap(value);
+#endif
+#elif defined(__GNUC__)
+  return __builtin_bswap64(value);
+#else
+  return b2n_fallback_byteswap(value);
+#endif
+}
+
+template <typename T> constexpr T b2n_to_native(T value) noexcept {
+  static_assert(std::is_same_v<T, std::uint16_t> ||
+                std::is_same_v<T, std::uint32_t> ||
+                std::is_same_v<T, std::uint64_t>);
+
+  if constexpr (std::endian::native == std::endian::big) {
+    return value;
+  } else {
+    return b2n_builtin_byteswap(value);
+  }
+}
+
+constexpr inline void B2N_16(std::uint16_t &value) noexcept {
+  value = b2n_to_native(value);
+}
+
+constexpr inline void B2N_32(std::uint32_t &value) noexcept {
+  value = b2n_to_native(value);
+}
+
+constexpr inline void B2N_64(std::uint64_t &value) noexcept {
+  value = b2n_to_native(value);
+}
 
 #endif /* LIBDVDREAD_BSWAP_H */

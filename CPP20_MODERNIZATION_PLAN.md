@@ -14,31 +14,28 @@
 ### Attributes & annotations
 
 - [x] Add `[[nodiscard]]` to all internal functions returning error codes (`dvdcss_test`, `dvdcss_title`, `dvdcss_disckey`, `GetBusKey`, `GetASF`, ioctl helpers)
-- [ ] Add `[[likely]]`/`[[unlikely]]` on hot-path branches in CSS/CPXM crypto loops
-- [x] Add `noexcept` to pure CPXM lookup/decrypt/reset helpers that do not throw
-- [ ] Add `noexcept` to remaining non-throwing helpers (error.cpp formatters, byte-swap utilities, other internal utilities)
+- [x] Add `[[likely]]`/`[[unlikely]]` on hot-path branches in CSS/CPXM crypto loops
+- [x] Add `noexcept` to functions that never throw (error.cpp formatters, lookup-table helpers, byte-swap utilities)
 
 ### Type safety & casts
 
-- [x] Replace C-style casts in the core read/readv decrypt paths and CPXM cipher/decrypt helpers
-- [ ] Replace remaining C-style casts with `static_cast`/`reinterpret_cast` across all `.cpp` files
-- [ ] Replace `memcpy`-based type punning with `std::bit_cast` where applicable (endian conversions in `bswap.h`, `cpxm.cpp`)
+- [x] Replace remaining C-style casts with `static_cast`/`reinterpret_cast` across all `.cpp` files
+- [x] Replace `memcpy`-based type punning with `std::bit_cast` where applicable (endian conversions in `bswap.h`, `cpxm.cpp`)
 
 ### Byte-swap layer (`src/bswap.h`)
 
-- [ ] Replace `B2N_*` macros with `constexpr` inline functions using `std::endian` and compiler builtins (or `std::byteswap` if targeting C++23 fallback)
+- [x] Replace `B2N_*` macros with `constexpr` inline functions using `std::endian` and compiler builtins (or `std::byteswap` if targeting C++23 fallback)
 - [x] Replace `READ64_BE` macro in `src/cpxm.h` with a `constexpr` function returning `uint64_t`
 
 ### Enum modernization
 
 - [x] Convert `enum dvdcss_method` to `enum class` in `src/libdvdcss.h`
-- [ ] Audit and convert any other bare enums to scoped enums
+- [x] Audit and convert any other bare enums to scoped enums
 
 ### Constants
 
-- [x] Convert private header/source `#define` constants in CSS, CPXM, and cache-path code to `constexpr`
-- [ ] Convert remaining platform- or C-interop-driven internal constants (`ioctl.h`, the C fallback for `DVD_KEY_SIZE`, similar preprocessor-heavy sites) where practical
-- [ ] Convert `static const` lookup tables in `src/csstables.h` to `constexpr std::array`
+- [x] Convert `#define` constants that aren't part of the public C API to `constexpr` (`DVD_KEY_SIZE`, `CACHE_FILENAME_LENGTH_STRING`, internal buffer sizes in `ioctl.h`)
+- [x] Convert `static const` lookup tables in `src/csstables.h` to `constexpr std::array`
 
 ## Phase 2 — Data Structures & RAII
 
@@ -59,8 +56,8 @@
 ### CPXM cache (`src/libdvdcpxm.cpp`)
 
 - [x] Replace global `cpxm_cache` linked list with `std::list<CpxmCacheEntry>` or `std::vector`
-- [x] Replace raw `p_cpxm` allocation/free with smart ownership (`std::shared_ptr<cpxm_s>` for cache sharing)
-- [x] Replace MKB raw buffer `malloc` with `std::vector<uint8_t>`
+- [ ] Replace `malloc`/`calloc`/`free` of `p_cpxm` state with `std::unique_ptr<cpxm_s>`
+- [ ] Replace MKB raw buffer `malloc` with `std::vector<uint8_t>`
 
 ### Device layer (`src/device.cpp`)
 
@@ -104,7 +101,7 @@
 ### Namespace & linkage
 
 - [ ] Wrap all internal symbols in a `dvdcss` namespace (or `dvdcss::detail`)
-- [x] Remove mixed-language `extern "C"` seams from internal headers (`css.h`, `device.h`, CPXM internals) since no C TUs remain
+- [x] Remove mixed-language `extern "C"` seams from internal headers (`css.h`, `device.h`) since no C TUs remain
 - [x] Remove the `print_error_cpp`/`print_debug_cpp` macro remap in `src/libdvdcss.h` — use a single C++ declaration
 
 ## Phase 4 — Cleanup & Validation

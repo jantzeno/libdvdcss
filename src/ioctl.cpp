@@ -101,7 +101,11 @@ using std::memset;
 #define DVD_CHALLENGE_SIZE 10
 
 #if defined(_WIN32)
-#define DVDCSS_TO_HANDLE(fd) ((HANDLE)(intptr_t)(fd))
+static inline HANDLE dvdcss_to_handle(dvdcss_fd_t fd) {
+  return reinterpret_cast<HANDLE>(fd);
+}
+
+#define DVDCSS_TO_HANDLE(fd) dvdcss_to_handle(fd)
 #endif
 
 /*****************************************************************************
@@ -316,11 +320,11 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_DISK_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_DISK_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdDiskKey;
+  key->KeyType = DVD_KEY_TYPE::DvdDiskKey;
   key->KeyFlags = 0;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
@@ -446,13 +450,14 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_TITLE_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_TITLE_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdTitleKey;
+  key->KeyType = DVD_KEY_TYPE::DvdTitleKey;
   key->KeyFlags = 0;
-  key->Parameters.TitleOffset.QuadPart = (LONGLONG)i_pos * DVDCSS_BLOCK_SIZE;
+  key->Parameters.TitleOffset.QuadPart =
+      static_cast<LONGLONG>(i_pos) * DVDCSS_BLOCK_SIZE;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
@@ -655,11 +660,11 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_CHALLENGE_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_CHALLENGE_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdChallengeKey;
+  key->KeyType = DVD_KEY_TYPE::DvdChallengeKey;
   key->KeyFlags = 0;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
@@ -760,14 +765,14 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_ASF_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
   PDVD_ASF keyData;
 
   key->KeyLength = DVD_ASF_LENGTH;
-  key->KeyType = DvdAsf;
+  key->KeyType = DVD_KEY_TYPE::DvdAsf;
   key->KeyFlags = 0;
 
-  keyData = (PDVD_ASF)key->KeyData;
+  keyData = reinterpret_cast<PDVD_ASF>(key->KeyData);
   keyData->SuccessFlag = *pi_asf;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
@@ -779,7 +784,7 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
     return i_ret;
   }
 
-  keyData = (PDVD_ASF)key->KeyData;
+  keyData = reinterpret_cast<PDVD_ASF>(key->KeyData);
   *pi_asf = keyData->SuccessFlag;
 
 #elif defined(__QNXNTO__)
@@ -870,11 +875,11 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_BUS_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_BUS_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdBusKey1;
+  key->KeyType = DVD_KEY_TYPE::DvdBusKey1;
   key->KeyFlags = 0;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
@@ -1011,8 +1016,8 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
 
   cdb[0] = GPCMD_READ_DVD_STRUCTURE;
   cdb[7] = CPRM_STRUCT_MEDIA_ID;
-  cdb[8] = (uint8_t)((CPRM_MEDIA_ID_SIZE + 4) >> 8);
-  cdb[9] = (uint8_t)((CPRM_MEDIA_ID_SIZE + 4) & 0xff);
+  cdb[8] = static_cast<uint8_t>((CPRM_MEDIA_ID_SIZE + 4) >> 8);
+  cdb[9] = static_cast<uint8_t>((CPRM_MEDIA_ID_SIZE + 4) & 0xff);
   cdb[10] = (*p_agid << 6);
 
   io_hdr.interface_id = 'S';
@@ -1101,13 +1106,13 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   uint8_t sense[32] = {0};
 
   cdb[0] = GPCMD_READ_DVD_STRUCTURE;
-  cdb[2] = (uint8_t)((mkb_pack >> 24) & 0xFF);
-  cdb[3] = (uint8_t)((mkb_pack >> 16) & 0xFF);
-  cdb[4] = (uint8_t)((mkb_pack >> 8) & 0xFF);
-  cdb[5] = (uint8_t)(mkb_pack & 0xFF);
+  cdb[2] = static_cast<uint8_t>((mkb_pack >> 24) & 0xFF);
+  cdb[3] = static_cast<uint8_t>((mkb_pack >> 16) & 0xFF);
+  cdb[4] = static_cast<uint8_t>((mkb_pack >> 8) & 0xFF);
+  cdb[5] = static_cast<uint8_t>(mkb_pack & 0xFF);
   cdb[7] = CPRM_STRUCT_MKB;
-  cdb[8] = (uint8_t)((CPRM_MKB_PACK_SIZE + 4) >> 8);
-  cdb[9] = (uint8_t)((CPRM_MKB_PACK_SIZE + 4) & 0xFF);
+  cdb[8] = static_cast<uint8_t>((CPRM_MKB_PACK_SIZE + 4) >> 8);
+  cdb[9] = static_cast<uint8_t>((CPRM_MKB_PACK_SIZE + 4) & 0xFF);
   cdb[10] = *p_agid << 6;
 
   struct sg_io_hdr io_hdr = {};
@@ -1154,10 +1159,10 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 
   WinInitSPTD(&sptd, GPCMD_READ_DVD_STRUCTURE);
 
-  sptd.Cdb[2] = (uint8_t)((mkb_pack >> 24) & 0xFF);
-  sptd.Cdb[3] = (uint8_t)((mkb_pack >> 16) & 0xFF);
-  sptd.Cdb[4] = (uint8_t)((mkb_pack >> 8) & 0xFF);
-  sptd.Cdb[5] = (uint8_t)(mkb_pack & 0xFF);
+  sptd.Cdb[2] = static_cast<uint8_t>((mkb_pack >> 24) & 0xFF);
+  sptd.Cdb[3] = static_cast<uint8_t>((mkb_pack >> 16) & 0xFF);
+  sptd.Cdb[4] = static_cast<uint8_t>((mkb_pack >> 8) & 0xFF);
+  sptd.Cdb[5] = static_cast<uint8_t>(mkb_pack & 0xFF);
   sptd.Cdb[7] = CPRM_STRUCT_MKB;
   sptd.Cdb[10] = *p_agid << 6;
 
@@ -1176,10 +1181,10 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MKB_PACK_SIZE + 4);
 
-  sdc.command[2] = (uint8_t)((mkb_pack >> 24) & 0xFF);
-  sdc.command[3] = (uint8_t)((mkb_pack >> 16) & 0xFF);
-  sdc.command[4] = (uint8_t)((mkb_pack >> 8) & 0xFF);
-  sdc.command[5] = (uint8_t)(mkb_pack & 0xFF);
+  sdc.command[2] = static_cast<uint8_t>((mkb_pack >> 24) & 0xFF);
+  sdc.command[3] = static_cast<uint8_t>((mkb_pack >> 16) & 0xFF);
+  sdc.command[4] = static_cast<uint8_t>((mkb_pack >> 8) & 0xFF);
+  sdc.command[5] = static_cast<uint8_t>(mkb_pack & 0xFF);
   sdc.command[7] = CPRM_STRUCT_MKB;
   sdc.command[10] = *p_agid << 6;
 
@@ -1264,11 +1269,11 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_CHALLENGE_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_CHALLENGE_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdChallengeKey;
+  key->KeyType = DVD_KEY_TYPE::DvdChallengeKey;
   key->KeyFlags = 0;
 
   memcpy(key->KeyData, p_challenge, DVD_CHALLENGE_SIZE);
@@ -1372,11 +1377,11 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_BUS_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
 
   key->KeyLength = DVD_BUS_KEY_LENGTH;
   key->SessionId = *pi_agid;
-  key->KeyType = DvdBusKey2;
+  key->KeyType = DVD_KEY_TYPE::DvdBusKey2;
   key->KeyFlags = 0;
 
   memcpy(key->KeyData, p_key, DVD_KEY_SIZE);
@@ -1489,11 +1494,11 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
 #elif defined(_WIN32)
   DWORD tmp;
   uint8_t buffer[DVD_RPC_KEY_LENGTH] = {0};
-  PDVD_COPY_PROTECT_KEY key = (PDVD_COPY_PROTECT_KEY)&buffer;
+  auto *key = reinterpret_cast<PDVD_COPY_PROTECT_KEY>(&buffer);
   PDVD_RPC_KEY keyData;
 
   key->KeyLength = DVD_RPC_KEY_LENGTH;
-  key->KeyType = DvdGetRpcKey;
+  key->KeyType = DVD_KEY_TYPE::DvdGetRpcKey;
   key->KeyFlags = 0;
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_READ_KEY, key,
@@ -1505,7 +1510,7 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
     return i_ret;
   }
 
-  keyData = (PDVD_RPC_KEY)key->KeyData;
+  keyData = reinterpret_cast<PDVD_RPC_KEY>(key->KeyData);
   *p_type = keyData->TypeCode;
   *p_mask = keyData->RegionMask;
   *p_scheme = keyData->RpcScheme;
@@ -1601,7 +1606,7 @@ static void SolarisInitUSCSI(struct uscsi_cmd *p_sc, int i_type) {
     break;
   }
 
-  rs_cdb = (union scsi_cdb *)p_sc->uscsi_cdb;
+  rs_cdb = reinterpret_cast<union scsi_cdb *>(p_sc->uscsi_cdb);
 
   rs_cdb->scc_cmd = i_type;
 
@@ -1645,10 +1650,12 @@ static int SolarisSendUSCSI(dvdcss_fd_t i_fd, struct uscsi_cmd *p_sc) {
 
     p_lib = dlopen("libsmedia.so", RTLD_NOW);
     if (p_lib) {
-      p_get_handle = (void *(*)(int32_t))dlsym(p_lib, "smedia_get_handle");
-      p_uscsi_cmd =
-          (int (*)(void *, struct uscsi_cmd *))dlsym(p_lib, "smedia_uscsi_cmd");
-      p_release_handle = (int (*)(void *))dlsym(p_lib, "smedia_release_handle");
+      p_get_handle = reinterpret_cast<void *(*)(int32_t)>(
+          dlsym(p_lib, "smedia_get_handle"));
+      p_uscsi_cmd = reinterpret_cast<int (*)(void *, struct uscsi_cmd *)>(
+          dlsym(p_lib, "smedia_uscsi_cmd"));
+      p_release_handle = reinterpret_cast<int (*)(void *)>(
+          dlsym(p_lib, "smedia_release_handle"));
 
       if (p_get_handle && p_uscsi_cmd && p_release_handle) {
         b_have_sm = 1;
@@ -1692,8 +1699,8 @@ static void WinInitSPTD(SCSI_PASS_THROUGH_DIRECT *p_sptd, int i_type) {
   }
 
   p_sptd->Cdb[0] = i_type;
-  p_sptd->Cdb[8] = (uint8_t)(p_sptd->DataTransferLength >> 8) & 0xff;
-  p_sptd->Cdb[9] = (uint8_t)p_sptd->DataTransferLength & 0xff;
+  p_sptd->Cdb[8] = static_cast<uint8_t>(p_sptd->DataTransferLength >> 8) & 0xff;
+  p_sptd->Cdb[9] = static_cast<uint8_t>(p_sptd->DataTransferLength) & 0xff;
   p_sptd->CdbLength = 12;
 
   p_sptd->TimeOutValue = 2;

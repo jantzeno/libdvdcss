@@ -56,7 +56,7 @@ extern "C" {
 }
 #endif
 
-#define DVD_DISCKEY_SIZE 2048
+inline constexpr int DVD_DISCKEY_SIZE = 2048;
 
 /*****************************************************************************
  * Common macros, OS-specific
@@ -182,15 +182,16 @@ typedef union dvd_authinfo dvd_authinfo;
 
 typedef ULONG DVD_SESSION_ID, *PDVD_SESSION_ID;
 
-typedef enum DVD_STRUCTURE_FORMAT {
+enum class DVD_STRUCTURE_FORMAT {
   DvdPhysicalDescriptor,
   DvdCopyrightDescriptor,
   DvdDiskKeyDescriptor,
   DvdBCADescriptor,
   DvdManufacturerDescriptor,
-  DvdMaxDescriptor
-} DVD_STRUCTURE_FORMAT,
-    *PDVD_STRUCTURE_FORMAT;
+  DvdMaxDescriptor,
+};
+
+using PDVD_STRUCTURE_FORMAT = DVD_STRUCTURE_FORMAT *;
 
 typedef struct DVD_READ_STRUCTURE {
   LARGE_INTEGER BlockByteOffset;
@@ -205,7 +206,7 @@ typedef struct DVD_COPYRIGHT_DESCRIPTOR {
   USHORT Reserved;
 } DVD_COPYRIGHT_DESCRIPTOR, *PDVD_COPYRIGHT_DESCRIPTOR;
 
-typedef enum {
+enum class DVD_KEY_TYPE {
   DvdChallengeKey = 0x01,
   DvdBusKey1,
   DvdBusKey2,
@@ -214,8 +215,8 @@ typedef enum {
   DvdSetRpcKey = 0x6,
   DvdGetRpcKey = 0x8,
   DvdDiskKey = 0x80,
-  DvdInvalidateAGID = 0x3f
-} DVD_KEY_TYPE;
+  DvdInvalidateAGID = 0x3f,
+};
 
 typedef union DVD_COPY_PROTECT_PARAMETERS {
   struct DVD_COPY_PROTECT_FILE_BLOCK {
@@ -234,8 +235,8 @@ typedef struct DVD_COPY_PROTECT_KEY {
   UCHAR KeyData[1];
 } DVD_COPY_PROTECT_KEY, *PDVD_COPY_PROTECT_KEY;
 
-#define DVD_COPY_PROTECT_KEY_HEADER_SIZE                                       \
-  ((ULONG)offsetof(DVD_COPY_PROTECT_KEY, KeyData))
+inline constexpr ULONG DVD_COPY_PROTECT_KEY_HEADER_SIZE =
+    static_cast<ULONG>(offsetof(DVD_COPY_PROTECT_KEY, KeyData));
 
 typedef struct DVD_ASF {
   UCHAR Reserved0[3];
@@ -252,13 +253,18 @@ typedef struct DVD_RPC_KEY {
   UCHAR Reserved2[1];
 } DVD_RPC_KEY, *PDVD_RPC_KEY;
 
-#define DVD_CHALLENGE_KEY_LENGTH (12 + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
-#define DVD_BUS_KEY_LENGTH (8 + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
-#define DVD_TITLE_KEY_LENGTH (8 + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
-#define DVD_DISK_KEY_LENGTH (2048 + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
-#define DVD_RPC_KEY_LENGTH                                                     \
-  (sizeof(DVD_RPC_KEY) + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
-#define DVD_ASF_LENGTH (sizeof(DVD_ASF) + DVD_COPY_PROTECT_KEY_HEADER_SIZE)
+inline constexpr ULONG DVD_CHALLENGE_KEY_LENGTH =
+    12 + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
+inline constexpr ULONG DVD_BUS_KEY_LENGTH =
+    8 + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
+inline constexpr ULONG DVD_TITLE_KEY_LENGTH =
+    8 + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
+inline constexpr ULONG DVD_DISK_KEY_LENGTH =
+    DVD_DISCKEY_SIZE + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
+inline constexpr ULONG DVD_RPC_KEY_LENGTH =
+    static_cast<ULONG>(sizeof(DVD_RPC_KEY)) + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
+inline constexpr ULONG DVD_ASF_LENGTH =
+    static_cast<ULONG>(sizeof(DVD_ASF)) + DVD_COPY_PROTECT_KEY_HEADER_SIZE;
 
 typedef struct SCSI_PASS_THROUGH_DIRECT {
   USHORT Length;

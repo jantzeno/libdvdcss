@@ -34,8 +34,8 @@ static int ioctl_SendRPC(dvdcss_fd_t i_fd, int i_pdrc) {
   int i_ret;
 
   /* Shut up warnings about unused parameters. */
-  (void)i_fd;
-  (void)i_pdrc;
+  static_cast<void>(i_fd);
+  static_cast<void>(i_pdrc);
 
 #if defined(HAVE_LINUX_DVD_STRUCT) && defined(DVD_HOST_SEND_RPC_STATE)
   dvd_authinfo auth_info = {0};
@@ -151,7 +151,7 @@ static int set_region(dvdcss_fd_t fd, int region) {
   printf("Setting drive region can only be done a finite "
          "number of times, press Ctrl-C now to cancel!\n");
   /* Discard returned character, just wait for any key as confirmation. */
-  (void)getchar();
+  static_cast<void>(getchar());
 
   region_mask = 0xff & ~(1 << (region - 1));
   printf("Setting region to %d( %x)\n", region, region_mask);

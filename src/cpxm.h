@@ -35,12 +35,27 @@
 
 #include "bswap.h"
 #include "dvdcss/dvdcss.h"
+#include <array>
+#include <bit>
+#include <cstddef>
 #include <cstdint>
-#include <cstring>
+#include <type_traits>
+
+template <typename T>
+[[nodiscard]] inline T load_unaligned_value(const void *src) noexcept {
+  static_assert(std::is_trivially_copyable_v<T>);
+
+  std::array<std::byte, sizeof(T)> bytes{};
+  const auto *src_bytes = static_cast<const std::byte *>(src);
+  for (std::size_t i = 0; i < bytes.size(); ++i) {
+    bytes[i] = src_bytes[i];
+  }
+
+  return std::bit_cast<T>(bytes);
+}
 
 [[nodiscard]] inline uint64_t read64_be(const void *src) noexcept {
-  uint64_t value;
-  std::memcpy(&value, src, sizeof(value));
+  uint64_t value = load_unaligned_value<uint64_t>(src);
   B2N_64(value);
   return value;
 }

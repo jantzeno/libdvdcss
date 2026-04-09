@@ -136,11 +136,11 @@ static constexpr std::array<device_key_t, 16> cprm_device_keys = {{
     {0x0f, 0x08fc, 0xd28ce525a2be4b},
 }};
 
-static constexpr uint8_t rol8_constexpr(uint8_t code, int n) {
+static constexpr uint8_t rol8_constexpr(uint8_t code, int n) noexcept {
   return static_cast<uint8_t>((code << n) | (code >> (8 - n)));
 }
 
-static constexpr std::array<uint32_t, 256> build_sbox_f() {
+static constexpr std::array<uint32_t, 256> build_sbox_f() noexcept {
   std::array<uint32_t, 256> values = {};
 
   for (size_t i = 0; i < values.size(); ++i) {
@@ -276,7 +276,7 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length) {
     for (round = 0; round < 10; round++) {
       L += F(R, sk[round % key_round]);
 
-      if (round == 4) {
+      if (round == 4) [[unlikely]] {
         inkey = key ^ ((static_cast<uint64_t>(R & 0x00ffffffu) << 32) | L);
       }
       t = L;
@@ -330,7 +330,7 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
       L = R;
       R = t;
 
-      if (round == 5) {
+      if (round == 5) [[unlikely]] {
         inkey = key ^ ((static_cast<uint64_t>(R & 0x00ffffffu) << 32) | L);
       }
     }
@@ -372,7 +372,9 @@ std::vector<uint8_t> cprm_get_mkb(dvdcss_t dvdcss) {
   return mkb;
 }
 
-#define f(c, r) (((uint64_t)c << 32) | (uint64_t)r)
+static inline uint64_t combine_column_row(uint8_t column, uint16_t row) {
+  return (static_cast<uint64_t>(column) << 32) | static_cast<uint64_t>(row);
+}
 
 /* This function retrieves the main key used to decryption; this key is derived
  * from applying the C2 cypher to the MKB and the DVD-Audio player device keys,
@@ -393,12 +395,13 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
     no_more_records = 0;
     while (!no_more_records) {
       record_type = p_mkb[mkb_pos];
-      memcpy(&length, &p_mkb[mkb_pos], sizeof(length));
-      length &= 0xffffff00;
-      B2N_32(length);
+      uint32_t record_length =
+          load_unaligned_value<uint32_t>(&p_mkb[mkb_pos]) & 0xffffff00u;
+      B2N_32(record_length);
+      length = static_cast<int>(record_length);
 
       if (length >= 12) {
-        memcpy(&buffer, &p_mkb[mkb_pos + 4], sizeof(buffer));
+        buffer = load_unaligned_value<uint64_t>(&p_mkb[mkb_pos + 4]);
       } else {
         if (length < 4)
           length = 4;
@@ -415,14 +418,14 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
         B2N_64(buffer);
         /* intentional fallthrough */
       case 0x01: /* Calculate media key record */
-        column = reinterpret_cast<uint8_t *>(&buffer)[4];
+        column = std::bit_cast<std::array<uint8_t, sizeof(buffer)>>(buffer)[4];
         /*
         if (column >= 16 || ((uint8_t*)&buffer)[5] != 0 ||
         ((uint8_t*)&buffer)[6] != 0 || ((uint8_t*)&buffer)[7] != 1) break;
         */
         /* Get appropriate device key for column */
         no_more_keys = 1;
-        for (i = i_dev_key; i < (int)nr_dev_keys; i++) {
+        for (i = i_dev_key; i < static_cast<int>(nr_dev_keys); i++) {
           if (p_dev_keys[i].col == column) {
             no_more_keys = 0;
             i_dev_key = i;
@@ -433,8 +436,8 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
           break;
         if (12 + p_dev_keys[i_dev_key].row * 8 + 8 > length)
           break;
-        memcpy(&buffer, &p_mkb[mkb_pos + 12 + p_dev_keys[i_dev_key].row * 8],
-               sizeof(buffer));
+        buffer = load_unaligned_value<uint64_t>(
+            &p_mkb[mkb_pos + 12 + p_dev_keys[i_dev_key].row * 8]);
         B2N_64(buffer);
 
         if (record_type == 0x82)
@@ -442,7 +445,7 @@ int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
 
         media_key =
             (c2_dec(buffer, p_dev_keys[i_dev_key].key) & 0x00ffffffffffffff) ^
-            f(column, p_dev_keys[i_dev_key].row);
+            combine_column_row(column, p_dev_keys[i_dev_key].row);
         buffer = c2_dec(verification_data, media_key);
 
         if ((buffer & 0xffffffff00000000) == 0xdeadbeef00000000) {
@@ -724,7 +727,7 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer,
     int result =
         cprm_decrypt_block(temp_buffer, flags, cpxm->vr_k_t, cpxm->apstb);
 
-    if (result == 1) {
+    if (result == 1) [[likely]] {
       memcpy(p_buffer, temp_buffer, DVDCPXM_BLOCK_SIZE);
       return result;
     }
@@ -733,13 +736,13 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer,
     for (uint64_t guess = 0; guess < nr_possible_values; guess++) {
 
       /* skip if we already checked this above */
-      if (guess == cpxm->apstb)
+      if (guess == cpxm->apstb) [[unlikely]]
         continue;
 
       /* try our value */
       memcpy(temp_buffer, p_buffer, DVDCPXM_BLOCK_SIZE);
       result = cprm_decrypt_block(temp_buffer, flags, cpxm->vr_k_t, guess);
-      if (result == 1) {
+      if (result == 1) [[unlikely]] {
         memcpy(p_buffer, temp_buffer, DVDCPXM_BLOCK_SIZE);
         cpxm->apstb = guess;
         return result;
@@ -803,7 +806,7 @@ int dvdcpxm_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks, int i_flags) {
 }
 
 int dvdcpxm_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
-  (void)i_flags;
+  static_cast<void>(i_flags);
   return dvdcss_seek(dvdcss, i_blocks, DVDCSS_NOFLAGS);
 }
 

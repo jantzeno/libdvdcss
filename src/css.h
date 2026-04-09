@@ -29,21 +29,13 @@
 #ifndef DVDCSS_CSS_H
 #define DVDCSS_CSS_H
 
-#ifdef __cplusplus
 #include <array>
-#endif
-
 #include <stdint.h>
 
 #include "dvdcss/dvdcss.h"
 
-#ifdef __cplusplus
 inline constexpr int DVD_KEY_SIZE = 5;
 using dvdcss_key = std::array<uint8_t, DVD_KEY_SIZE>;
-#else
-#define DVD_KEY_SIZE 5
-typedef uint8_t dvdcss_key[DVD_KEY_SIZE];
-#endif
 
 typedef struct dvd_title {
   int i_startlb;

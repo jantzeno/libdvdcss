@@ -26,14 +26,14 @@
 #include "libdvdcss.h"
 
 static void print_message(const char *prefix, const char *psz_string,
-                          va_list args) {
+                          va_list args) noexcept {
   std::fprintf(stderr, "libdvdcss %s: ", prefix);
   std::vfprintf(stderr, psz_string, args);
   std::fprintf(stderr, "\n");
 }
 
 static void vprint_error(dvdcss_t dvdcss, const char *psz_string,
-                         va_list args) {
+                         va_list args) noexcept {
   if (dvdcss->b_errors) {
     print_message("error", psz_string, args);
   }
@@ -42,7 +42,7 @@ static void vprint_error(dvdcss_t dvdcss, const char *psz_string,
 }
 
 static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
-                         va_list args) {
+                         va_list args) noexcept {
   if (dvdcss->b_debug) {
     print_message("debug", psz_string, args);
   }
@@ -51,7 +51,7 @@ static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
 /*****************************************************************************
  * Error messages
  *****************************************************************************/
-void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
+void print_error(dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
@@ -62,7 +62,7 @@ void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
 /*****************************************************************************
  * Debug messages
  *****************************************************************************/
-void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) {
+void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
