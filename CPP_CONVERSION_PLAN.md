@@ -110,14 +110,20 @@ Preserve the public C API while making the header safe for C++ consumers.
 
 Work:
 
-- [ ] Keep `extern "C"` guards exactly around the exported C API.
-- [ ] Verify callback signatures remain C-compatible.
-- [ ] Check macro exports and visibility attributes under C++ compilers.
+- [x] Keep `extern "C"` guards exactly around the exported C API.
+- [x] Verify callback signatures remain C-compatible.
+- [x] Check macro exports and visibility attributes under C++ compilers.
 
 Exit criteria:
 
-- [ ] The header compiles as both C and C++.
-- [ ] Existing C clients need no source changes.
+- [x] The header compiles as both C and C++.
+- [x] Existing C clients need no source changes.
+
+Validation note:
+
+- [x] `src/dvdcss/dvdcss.h` now keeps `extern "C"` only around exported function declarations; the opaque handle typedef, callback typedef, and flag macros remain outside the linkage block.
+- [x] Native C and C++ consumer snippets compiled successfully against the generated/uninstalled header set, including `dvdcss_stream_cb` callback assignment and `dvdcss_open_stream()` usage.
+- [x] Win32-style import/export macro forms in `LIBDVDCSS_EXPORT` compiled successfully under `x86_64-w64-mingw32-g++` with both `LIBDVDCSS_IMPORTS` and `LIBDVDCSS_EXPORTS` defined.
 
 #### `src/dvdcss/dvdcpxm.h`
 
