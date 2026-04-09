@@ -1,7 +1,7 @@
 # libdvdcss source files
 dvdcss_src = files(
     'cpxm.cpp',
-    'css.c',
+    'css.cpp',
     'device.c',
     'error.cpp',
     'ioctl.c',

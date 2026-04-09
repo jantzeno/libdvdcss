@@ -357,9 +357,15 @@ Central algorithmic code, but less OS-specific than device and ioctl paths.
 
 Focus:
 
-- [ ] Table lookups and integer conversions.
-- [ ] Any `void *` casts and legacy macros.
-- [ ] Preservation of exact decryption behavior.
+- [x] Table lookups and integer conversions.
+- [x] Any `void *` casts and legacy macros.
+- [x] Preservation of exact decryption behavior.
+
+Validation note:
+
+- [x] The implementation now lives in `src/css.cpp`; the source already compiled as C++17 without algorithm changes, so the table-driven lookup code, integer conversions, and descrambling logic were preserved as-is during the rename.
+- [x] The CSS entry points now keep a narrow C-linkage seam through `src/css.h` so the remaining C implementation files still bind to `dvdcss_test()`, `dvdcss_title()`, `dvdcss_disckey()`, `dvdcss_unscramble()`, `GetBusKey()`, and `GetASF()`, and `src/device.h` now does the same for the still-C device helpers called from `css.cpp`.
+- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded after the rename, and a tiny external-style C consumer still compiled cleanly against the public `dvdcss.h` and `dvdcpxm.h` headers.
 
 #### `src/csstables.h`
 

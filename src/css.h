@@ -55,15 +55,15 @@ typedef struct css {
 /*****************************************************************************
  * Prototypes in css.c
  *****************************************************************************/
+#ifdef __cplusplus
+extern "C" {
+#endif
 int dvdcss_test(dvdcss_t);
 int dvdcss_title(dvdcss_t, int);
 int dvdcss_disckey(dvdcss_t);
 int dvdcss_unscramble(dvd_key, uint8_t *);
 
 /* exported for USB authentification in CPXM */
-#ifdef __cplusplus
-extern "C" {
-#endif
 int GetBusKey(dvdcss_t);
 int GetASF(dvdcss_t);
 #ifdef __cplusplus
