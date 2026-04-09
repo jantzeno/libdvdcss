@@ -32,30 +32,60 @@ static void print_message(const char *prefix, const char *psz_string,
   std::fprintf(stderr, "\n");
 }
 
-/*****************************************************************************
- * Error messages
- *****************************************************************************/
-void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
+static void vprint_error(dvdcss_t dvdcss, const char *psz_string,
+                         va_list args) {
   if (dvdcss->b_errors) {
-    va_list args;
-
-    va_start(args, psz_string);
     print_message("error", psz_string, args);
-    va_end(args);
   }
 
   dvdcss->psz_error = psz_string;
 }
 
+static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
+                         va_list args) {
+  if (dvdcss->b_debug) {
+    print_message("debug", psz_string, args);
+  }
+}
+
+/*****************************************************************************
+ * Error messages
+ *****************************************************************************/
+void print_error_cpp(dvdcss_t dvdcss, const char *psz_string, ...) {
+  va_list args;
+
+  va_start(args, psz_string);
+  vprint_error(dvdcss, psz_string, args);
+  va_end(args);
+}
+
 /*****************************************************************************
  * Debug messages
  *****************************************************************************/
-void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) {
-  if (dvdcss->b_debug) {
-    va_list args;
+void print_debug_cpp(const dvdcss_t dvdcss, const char *psz_string, ...) {
+  va_list args;
 
-    va_start(args, psz_string);
-    print_message("debug", psz_string, args);
-    va_end(args);
-  }
+  va_start(args, psz_string);
+  vprint_debug(dvdcss, psz_string, args);
+  va_end(args);
+}
+
+#undef print_error
+#undef print_debug
+
+extern "C" void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
+  va_list args;
+
+  va_start(args, psz_string);
+  vprint_error(dvdcss, psz_string, args);
+  va_end(args);
+}
+
+extern "C" void print_debug(const dvdcss_t dvdcss, const char *psz_string,
+                            ...) {
+  va_list args;
+
+  va_start(args, psz_string);
+  vprint_debug(dvdcss, psz_string, args);
+  va_end(args);
 }

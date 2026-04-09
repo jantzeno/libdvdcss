@@ -99,14 +99,14 @@ struct dvdcss_s {
  * Functions used across the library
  *****************************************************************************/
 #ifdef __cplusplus
-extern "C" {
-#endif
+void print_error_cpp(dvdcss_t, const char *, ...);
+void print_debug_cpp(const dvdcss_t, const char *, ...);
 
+#define print_error print_error_cpp
+#define print_debug print_debug_cpp
+#else
 void print_error(dvdcss_t, const char *, ...);
 void print_debug(const dvdcss_t, const char *, ...);
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif /* DVDCSS_LIBDVDCSS_H */

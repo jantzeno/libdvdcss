@@ -24,14 +24,14 @@
 
 #include <config.h>
 
-#define B2N_NOP(x)                                                            \
-  do {                                                                        \
-    (void)(x);                                                                \
+#define B2N_NOP(x)                                                             \
+  do {                                                                         \
+    (void)(x);                                                                 \
   } while (0)
 
-#define B2N_ASSIGN(x, expr)                                                   \
-  do {                                                                        \
-    (x) = (expr);                                                             \
+#define B2N_ASSIGN(x, expr)                                                    \
+  do {                                                                         \
+    (x) = (expr);                                                              \
   } while (0)
 
 #if defined(WORDS_BIGENDIAN)
@@ -116,10 +116,9 @@
 #elif defined(__FreeBSD__) || defined(__sun) || defined(__bsdi__) ||           \
     defined(_WIN32) || defined(__CYGWIN__) || defined(__BEOS__) ||             \
     defined(__OS2__)
-#define B2N_16(x)                                                              \
-  B2N_ASSIGN(x, ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8)))
+#define B2N_16(x) B2N_ASSIGN(x, ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8)))
 #define B2N_32(x)                                                              \
-  B2N_ASSIGN(x, ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |     \
+  B2N_ASSIGN(x, ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |      \
                  (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24)))
 #define B2N_64(x)                                                              \
   B2N_ASSIGN(x, ((((x) & 0xff00000000000000ULL) >> 56) |                       \

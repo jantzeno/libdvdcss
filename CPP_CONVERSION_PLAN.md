@@ -41,13 +41,14 @@ Apply these before renaming any implementation files:
    - [x] identifiers that collide with C++ keywords or stricter type rules
    - [x] macro patterns that rely on C-only behavior
 - [x] Ensure every internal header is self-contained under C++ compilation.
-- [ ] Keep exported declarations inside `extern "C"` only where the symbol is part of the public ABI.
-- [ ] Decide whether internal functions remain C linkage or move to normal C++ linkage. The simplest path is to keep only the public API in `extern "C"`.
+- [x] Keep exported declarations inside `extern "C"` only where the symbol is part of the public ABI.
+- [x] Decide whether internal functions remain C linkage or move to normal C++ linkage. The simplest path is to keep only the public API in `extern "C"`.
 
 Audit note:
 
 - [x] Current Linux/GCC C++17 verification passed for `src/common.h`, `src/bswap.h`, `src/css.h`, `src/device.h`, `src/ioctl.h`, `src/cpxm.h`, `src/libdvdcpxm.h`, and `src/libdvdcss.h`, both individually and in aggregate.
 - [x] Source-level C++ cleanup pass replaced implicit `void *` conversions in public/internal read paths, added explicit allocation casts in not-yet-converted `.c` files, hardened byte-swap macros into statement-safe assignment forms, and added explicit `dlsym()` function-pointer casts for the Solaris path.
+- [x] Linkage policy is now explicit: installed headers keep `extern "C"` only around exported ABI functions, while private logging helpers use normal C++ linkage for C++ callers plus a narrow C-linkage bridge so the remaining C translation units still link during the mixed-language phase.
 - [x] Remaining dormant-platform review items: Win32-specific type remapping in `src/common.h`, and Win32 ioctl structure definitions in `src/ioctl.h` that rely on non-portable layout patterns.
 - [x] Win32 validation passed under a stubbed C++17 Windows-header environment for the `_MSC_VER` and `__MINGW32__` branches in `src/common.h`, and for the `_WIN32` branch in `src/ioctl.h`.
 - [x] Win32 validation also passed with the real `x86_64-w64-mingw32-g++` frontend for `src/common.h` and `src/ioctl.h`.

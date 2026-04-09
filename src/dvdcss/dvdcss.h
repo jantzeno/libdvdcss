@@ -35,10 +35,6 @@
 
 #include <dvdcss/version.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /** Library instance handle, to be used for each library call. */
 typedef struct dvdcss_s *dvdcss_t;
 
@@ -83,6 +79,10 @@ typedef struct dvdcss_stream_cb {
 /*
  * Exported prototypes.
  */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 LIBDVDCSS_EXPORT dvdcss_t dvdcss_open(const char *psz_target);
 LIBDVDCSS_EXPORT dvdcss_t dvdcss_open_stream(void *p_stream,
                                              dvdcss_stream_cb *p_stream_cb);

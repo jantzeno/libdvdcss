@@ -33,13 +33,10 @@
 #ifndef _DVDCPXM_H
 #define _DVDCPXM_H
 
+#include <stdint.h>
+
 #include <dvdcss/dvdcss.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <stdint.h>
 /* The block size of a DVD. */
 #define DVDCPXM_BLOCK_SIZE 2048
 
@@ -67,6 +64,9 @@ extern "C" {
 /*
  * Exported prototypes.
  */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Called after the DVD is opened to initialize the cpxm struct, Must be run
  * after dvdcss_open */

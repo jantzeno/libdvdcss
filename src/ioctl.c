@@ -1652,10 +1652,9 @@ static int SolarisSendUSCSI(int i_fd, struct uscsi_cmd *p_sc) {
     p_lib = dlopen("libsmedia.so", RTLD_NOW);
     if (p_lib) {
       p_get_handle = (void *(*)(int32_t))dlsym(p_lib, "smedia_get_handle");
-      p_uscsi_cmd = (int (*)(void *, struct uscsi_cmd *))dlsym(
-          p_lib, "smedia_uscsi_cmd");
-      p_release_handle = (int (*)(void *))dlsym(p_lib,
-                                                "smedia_release_handle");
+      p_uscsi_cmd =
+          (int (*)(void *, struct uscsi_cmd *))dlsym(p_lib, "smedia_uscsi_cmd");
+      p_release_handle = (int (*)(void *))dlsym(p_lib, "smedia_release_handle");
 
       if (p_get_handle && p_uscsi_cmd && p_release_handle) {
         b_have_sm = 1;
