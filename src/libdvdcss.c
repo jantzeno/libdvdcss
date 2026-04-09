@@ -477,7 +477,7 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   int i_ret;
 
   /* Allocate the library structure. */
-  dvdcss_t dvdcss = malloc(sizeof(*dvdcss));
+  dvdcss_t dvdcss = (dvdcss_t)malloc(sizeof(*dvdcss));
   if (dvdcss == NULL) {
     return NULL;
   }
@@ -636,7 +636,7 @@ LIBDVDCSS_EXPORT int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
  */
 LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
                                  int i_flags) {
-  uint8_t *_p_buffer = p_buffer;
+  uint8_t *_p_buffer = (uint8_t *)p_buffer;
   int i_ret, i_index;
 
   i_ret = dvdcss->pf_read(dvdcss, _p_buffer, i_blocks);
@@ -699,7 +699,7 @@ LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
  */
 LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
                                   int i_flags) {
-  struct iovec *_p_iovec = p_iovec;
+  struct iovec *_p_iovec = (struct iovec *)p_iovec;
   int i_ret, i_index;
   void *iov_base;
   size_t iov_len;

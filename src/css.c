@@ -291,7 +291,7 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   p_title = p_newtitle;
 
   /* Write in the new title and its key */
-  p_newtitle = malloc(sizeof(*p_newtitle));
+  p_newtitle = (dvd_title *)malloc(sizeof(*p_newtitle));
   if (p_newtitle == NULL) {
     return -1;
   }
@@ -1087,7 +1087,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
    */
 
   /* initialize lookup tables for k[1] */
-  K1table = calloc(K1TABLESIZE, K1TABLEWIDTH);
+  K1table = (unsigned char *)calloc(K1TABLESIZE, K1TABLEWIDTH);
   if (K1table == NULL) {
     return -1;
   }
@@ -1111,7 +1111,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
   }
 
   /* Initializing our really big table */
-  BigTable = calloc(BIGTABLESIZE, sizeof(*BigTable));
+  BigTable = (unsigned int *)calloc(BIGTABLESIZE, sizeof(*BigTable));
   if (BigTable == NULL) {
     free(K1table);
     return -1;

@@ -24,11 +24,21 @@
 
 #include <config.h>
 
+#define B2N_NOP(x)                                                            \
+  do {                                                                        \
+    (void)(x);                                                                \
+  } while (0)
+
+#define B2N_ASSIGN(x, expr)                                                   \
+  do {                                                                        \
+    (x) = (expr);                                                             \
+  } while (0)
+
 #if defined(WORDS_BIGENDIAN)
 /* All bigendian systems are fine, just ignore the swaps. */
-#define B2N_16(x) (void)(x)
-#define B2N_32(x) (void)(x)
-#define B2N_64(x) (void)(x)
+#define B2N_16(x) B2N_NOP(x)
+#define B2N_32(x) B2N_NOP(x)
+#define B2N_64(x) B2N_NOP(x)
 
 #else /* WORDS_BIGENDIAN */
 
@@ -44,9 +54,9 @@
 
 #if defined(BSWAP_BUILTIN)
 
-#define B2N_16(x) x = __builtin_bswap16(x)
-#define B2N_32(x) x = __builtin_bswap32(x)
-#define B2N_64(x) x = __builtin_bswap64(x)
+#define B2N_16(x) B2N_ASSIGN(x, __builtin_bswap16(x))
+#define B2N_32(x) B2N_ASSIGN(x, __builtin_bswap32(x))
+#define B2N_64(x) B2N_ASSIGN(x, __builtin_bswap64(x))
 
 #else /* BSWAP_BUILTIN */
 
@@ -57,45 +67,45 @@
 
 #if defined(__linux__) || defined(__GLIBC__)
 #include <byteswap.h>
-#define B2N_16(x) x = bswap_16(x)
-#define B2N_32(x) x = bswap_32(x)
-#define B2N_64(x) x = bswap_64(x)
+#define B2N_16(x) B2N_ASSIGN(x, bswap_16(x))
+#define B2N_32(x) B2N_ASSIGN(x, bswap_32(x))
+#define B2N_64(x) B2N_ASSIGN(x, bswap_64(x))
 
 #elif defined(__APPLE__)
 #include <libkern/OSByteOrder.h>
-#define B2N_16(x) x = OSSwapBigToHostInt16(x)
-#define B2N_32(x) x = OSSwapBigToHostInt32(x)
-#define B2N_64(x) x = OSSwapBigToHostInt64(x)
+#define B2N_16(x) B2N_ASSIGN(x, OSSwapBigToHostInt16(x))
+#define B2N_32(x) B2N_ASSIGN(x, OSSwapBigToHostInt32(x))
+#define B2N_64(x) B2N_ASSIGN(x, OSSwapBigToHostInt64(x))
 
 #elif defined(__NetBSD__)
 #include <sys/endian.h>
-#define B2N_16(x) BE16TOH(x)
-#define B2N_32(x) BE32TOH(x)
-#define B2N_64(x) BE64TOH(x)
+#define B2N_16(x) B2N_ASSIGN(x, BE16TOH(x))
+#define B2N_32(x) B2N_ASSIGN(x, BE32TOH(x))
+#define B2N_64(x) B2N_ASSIGN(x, BE64TOH(x))
 
 #elif defined(__OpenBSD__)
 #include <sys/endian.h>
-#define B2N_16(x) x = swap16(x)
-#define B2N_32(x) x = swap32(x)
-#define B2N_64(x) x = swap64(x)
+#define B2N_16(x) B2N_ASSIGN(x, swap16(x))
+#define B2N_32(x) B2N_ASSIGN(x, swap32(x))
+#define B2N_64(x) B2N_ASSIGN(x, swap64(x))
 
 #elif defined(__FreeBSD__) && __FreeBSD_version >= 470000
 #include <sys/endian.h>
-#define B2N_16(x) x = be16toh(x)
-#define B2N_32(x) x = be32toh(x)
-#define B2N_64(x) x = be64toh(x)
+#define B2N_16(x) B2N_ASSIGN(x, be16toh(x))
+#define B2N_32(x) B2N_ASSIGN(x, be32toh(x))
+#define B2N_64(x) B2N_ASSIGN(x, be64toh(x))
 
 #elif defined(__QNXNTO__)
 #include <gulliver.h>
-#define B2N_16(x) x = ENDIAN_RET16(x)
-#define B2N_32(x) x = ENDIAN_RET32(x)
-#define B2N_64(x) x = ENDIAN_RET64(x)
+#define B2N_16(x) B2N_ASSIGN(x, ENDIAN_RET16(x))
+#define B2N_32(x) B2N_ASSIGN(x, ENDIAN_RET32(x))
+#define B2N_64(x) B2N_ASSIGN(x, ENDIAN_RET64(x))
 
 #elif defined(__DragonFly__)
 #include <sys/endian.h>
-#define B2N_16(x) x = bswap16(x)
-#define B2N_32(x) x = bswap32(x)
-#define B2N_64(x) x = bswap64(x)
+#define B2N_16(x) B2N_ASSIGN(x, bswap16(x))
+#define B2N_32(x) B2N_ASSIGN(x, bswap32(x))
+#define B2N_64(x) B2N_ASSIGN(x, bswap64(x))
 
 /* This is a slow but portable implementation, it has multiple evaluation
  * problems so beware.
@@ -106,19 +116,20 @@
 #elif defined(__FreeBSD__) || defined(__sun) || defined(__bsdi__) ||           \
     defined(_WIN32) || defined(__CYGWIN__) || defined(__BEOS__) ||             \
     defined(__OS2__)
-#define B2N_16(x) x = ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8))
+#define B2N_16(x)                                                              \
+  B2N_ASSIGN(x, ((((x) & 0xff00) >> 8) | (((x) & 0x00ff) << 8)))
 #define B2N_32(x)                                                              \
-  x = ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |                \
-       (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24))
+  B2N_ASSIGN(x, ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) |     \
+                 (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24)))
 #define B2N_64(x)                                                              \
-  x = ((((x) & 0xff00000000000000ULL) >> 56) |                                 \
-       (((x) & 0x00ff000000000000ULL) >> 40) |                                 \
-       (((x) & 0x0000ff0000000000ULL) >> 24) |                                 \
-       (((x) & 0x000000ff00000000ULL) >> 8) |                                  \
-       (((x) & 0x00000000ff000000ULL) << 8) |                                  \
-       (((x) & 0x0000000000ff0000ULL) << 24) |                                 \
-       (((x) & 0x000000000000ff00ULL) << 40) |                                 \
-       (((x) & 0x00000000000000ffULL) << 56))
+  B2N_ASSIGN(x, ((((x) & 0xff00000000000000ULL) >> 56) |                       \
+                 (((x) & 0x00ff000000000000ULL) >> 40) |                       \
+                 (((x) & 0x0000ff0000000000ULL) >> 24) |                       \
+                 (((x) & 0x000000ff00000000ULL) >> 8) |                        \
+                 (((x) & 0x00000000ff000000ULL) << 8) |                        \
+                 (((x) & 0x0000000000ff0000ULL) << 24) |                       \
+                 (((x) & 0x000000000000ff00ULL) << 40) |                       \
+                 (((x) & 0x00000000000000ffULL) << 56)))
 
 #else
 

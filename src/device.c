@@ -774,7 +774,7 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
 
     /* Allocate a buffer which will be used as a temporary storage
      * for readv */
-    dvdcss->p_readv_buffer = malloc(dvdcss->i_readv_buf_size);
+    dvdcss->p_readv_buffer = (uint8_t *)malloc(dvdcss->i_readv_buf_size);
     if (!dvdcss->p_readv_buffer) {
       print_error(dvdcss, "scatter input (readv) failed");
       dvdcss->i_pos = -1;

@@ -39,10 +39,10 @@
 
 #define READ64_BE(dest, src)                                                   \
   do {                                                                         \
-    uint64_t __tmp;                                                            \
-    memcpy(&__tmp, (src), sizeof(uint64_t));                                   \
-    B2N_64(__tmp);                                                             \
-    (dest) = __tmp;                                                            \
+    uint64_t read64_be_tmp_;                                                   \
+    memcpy(&read64_be_tmp_, (src), sizeof(read64_be_tmp_));                    \
+    B2N_64(read64_be_tmp_);                                                    \
+    (dest) = read64_be_tmp_;                                                   \
   } while (0)
 
 typedef struct cpxm {

@@ -330,7 +330,7 @@ uint8_t *cprm_get_mkb(dvdcss_t dvdcss) {
                             (uint8_t *)mkb_pack, &mkb_packs))
     return NULL;
 
-  p_mkb = malloc(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
+  p_mkb = (uint8_t *)malloc(mkb_packs * CPRM_MKB_PACK_SIZE - 16);
 
   if (!p_mkb)
     return NULL;
@@ -468,7 +468,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
     return -1;
   }
 
-  p_cpxm cpxm = calloc(1, sizeof(cpxm_s));
+  p_cpxm cpxm = (p_cpxm)calloc(1, sizeof(cpxm_s));
   if (!cpxm)
     return -1;
 
@@ -525,7 +525,8 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
   }
 
   /* store in cache */
-  cpxm_cache *cpxm_cache_addition = malloc(sizeof(cpxm_cache));
+  cpxm_cache *cpxm_cache_addition =
+      (cpxm_cache *)malloc(sizeof(cpxm_cache));
 
   if (!cpxm_cache_addition)
     return -1;
@@ -796,7 +797,7 @@ int dvdcpxm_close_internal(dvdcss_t dvdcss) {
 int dvdcpxm_close(dvdcss_t dvdcss) { return dvdcss_close(dvdcss); }
 
 int dvdcpxm_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks, int i_flags) {
-  uint8_t *_p_buffer = p_buffer;
+  uint8_t *_p_buffer = (uint8_t *)p_buffer;
   int i_ret, i_index;
 
   i_ret = dvdcss->pf_read(dvdcss, _p_buffer, i_blocks);
@@ -821,7 +822,7 @@ int dvdcpxm_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
 }
 
 int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks, int i_flags) {
-  struct iovec *_p_iovec = p_iovec;
+  struct iovec *_p_iovec = (struct iovec *)p_iovec;
   int i_ret, i_index;
   void *iov_base;
   size_t iov_len;

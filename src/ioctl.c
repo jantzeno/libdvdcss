@@ -999,7 +999,7 @@ int ioctl_ReadCPRMMediaId(int i_fd, int *p_agid, uint8_t *p_data_buffer) {
   struct sg_io_hdr io_hdr;
   uint8_t sense[32] = {0};
   uint8_t cdb[12] = {0};
-  uint8_t *data_buf = malloc(CPRM_MEDIA_ID_SIZE + 4);
+  uint8_t *data_buf = (uint8_t *)malloc(CPRM_MEDIA_ID_SIZE + 4);
 
   if (!data_buf)
     i_ret = -1;
@@ -1095,7 +1095,7 @@ int ioctl_ReadCPRMMKBPack(int i_fd, int *p_agid, int mkb_pack,
 
 #if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
     (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
-  uint8_t *sptd_buf = malloc(CPRM_MKB_PACK_SIZE + 4);
+  uint8_t *sptd_buf = (uint8_t *)malloc(CPRM_MKB_PACK_SIZE + 4);
   uint8_t cdb[12] = {0};
   uint8_t sense[32] = {0};
 
@@ -1651,9 +1651,11 @@ static int SolarisSendUSCSI(int i_fd, struct uscsi_cmd *p_sc) {
 
     p_lib = dlopen("libsmedia.so", RTLD_NOW);
     if (p_lib) {
-      p_get_handle = dlsym(p_lib, "smedia_get_handle");
-      p_uscsi_cmd = dlsym(p_lib, "smedia_uscsi_cmd");
-      p_release_handle = dlsym(p_lib, "smedia_release_handle");
+      p_get_handle = (void *(*)(int32_t))dlsym(p_lib, "smedia_get_handle");
+      p_uscsi_cmd = (int (*)(void *, struct uscsi_cmd *))dlsym(
+          p_lib, "smedia_uscsi_cmd");
+      p_release_handle = (int (*)(void *))dlsym(p_lib,
+                                                "smedia_release_handle");
 
       if (p_get_handle && p_uscsi_cmd && p_release_handle) {
         b_have_sm = 1;
