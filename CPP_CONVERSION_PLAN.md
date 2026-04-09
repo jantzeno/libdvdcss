@@ -272,8 +272,14 @@ Defines CPXM internal types and constants used by newer code.
 
 Work:
 
-- [ ] Validate bitfields, nested structs, and fixed-width integer use under C++.
-- [ ] Confirm the public include chain remains valid when this header is compiled from a `.cpp` file.
+- [x] Validate bitfields, nested structs, and fixed-width integer use under C++.
+- [x] Confirm the public include chain remains valid when this header is compiled from a `.cpp` file.
+
+Validation note:
+
+- [x] `device_key_t`, `cprm_media_id_t`, `cprm_mkb_desc_t`, and `cprm_mkb_t` compiled cleanly as trivial standard-layout types in C++, with the nested `id_media` bitfields remaining assignable and the fixed-width integer fields keeping their expected layout.
+- [x] Layout checks confirmed the current binary assumptions used by the CPRM paths, including `sizeof(cprm_media_id_t) == 18`, `offsetof(cprm_media_id_t, dvd_mac) == 8`, `sizeof(cprm_mkb_desc_t) == 16`, and `offsetof(cprm_mkb_t, mkb) == 16`.
+- [x] Standalone C++ include-chain checks passed when including only `src/libdvdcpxm.h`, and the header also compiled cleanly when `src/dvdcss/dvdcpxm.h` was included first; MinGW-w64 C++ accepted the same header and layout assertions unchanged.
 
 #### `src/libdvdcss.h`
 
