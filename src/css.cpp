@@ -35,6 +35,7 @@
  *****************************************************************************/
 #include "config.h"
 
+#include <algorithm>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,6 +82,12 @@ static int  AttackPadding   ( const uint8_t[] );
 #endif
 
 static int dvdcss_titlekey(dvdcss_t, int, dvd_key);
+
+static int build_cache_block_path(const dvdcss_t dvdcss, int i_block,
+                                  char *psz_path, size_t path_size) {
+  return snprintf(psz_path, path_size, "%s/%." CACHE_FILENAME_LENGTH_STRING "x",
+                  dvdcss->psz_cachefile.c_str(), i_block);
+}
 
 /*****************************************************************************
  * dvdcss_test: check if the disc is encrypted or not
@@ -193,33 +200,34 @@ extern "C" int dvdcss_test(dvdcss_t dvdcss) {
  * not be external if possible.
  *****************************************************************************/
 extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
-  struct dvd_title *p_title;
-  struct dvd_title *p_newtitle;
   dvd_key p_title_key;
   int i_fd, i_ret = -1, b_cache = 0;
+  auto title_it =
+      std::lower_bound(dvdcss->p_titles.begin(), dvdcss->p_titles.end(),
+                       i_block, [](const dvd_title &title, int block) {
+                         return title.i_startlb < block;
+                       });
 
   if (!dvdcss->b_scrambled) {
     return 0;
   }
 
   /* Check if we've already cracked this key */
-  p_title = dvdcss->p_titles;
-  while (p_title != NULL && p_title->p_next != NULL &&
-         p_title->p_next->i_startlb <= i_block) {
-    p_title = p_title->p_next;
-  }
-
-  if (p_title != NULL && p_title->i_startlb == i_block) {
+  if (title_it != dvdcss->p_titles.end() && title_it->i_startlb == i_block) {
     /* We've already cracked this key, nothing to do */
-    memcpy(dvdcss->css.p_title_key, p_title->p_key, sizeof(p_title->p_key));
+    memcpy(dvdcss->css.p_title_key, title_it->p_key, sizeof(title_it->p_key));
     return 0;
   }
 
   /* Check whether the key is in our disk cache */
-  if (dvdcss->psz_cachefile[0]) {
-    /* XXX: be careful, we use sprintf and not snprintf */
-    sprintf(dvdcss->psz_block, "%." CACHE_FILENAME_LENGTH_STRING "x", i_block);
-    i_fd = open(dvdcss->psz_cachefile, O_RDONLY);
+  if (!dvdcss->psz_cachefile.empty()) {
+    char psz_cache_path[PATH_MAX];
+    if (build_cache_block_path(dvdcss, i_block, psz_cache_path,
+                               sizeof(psz_cache_path)) < 0) {
+      return -1;
+    }
+
+    i_fd = open(psz_cache_path, O_RDONLY);
     b_cache = 1;
 
     if (i_fd >= 0) {
@@ -264,8 +272,14 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   }
 
   /* Key is valid, we store it on disk. */
-  if (dvdcss->psz_cachefile[0] && b_cache) {
-    i_fd = open(dvdcss->psz_cachefile, O_RDWR | O_CREAT, 0644);
+  if (!dvdcss->psz_cachefile.empty() && b_cache) {
+    char psz_cache_path[PATH_MAX];
+    if (build_cache_block_path(dvdcss, i_block, psz_cache_path,
+                               sizeof(psz_cache_path)) < 0) {
+      return -1;
+    }
+
+    i_fd = open(psz_cache_path, O_RDWR | O_CREAT, 0644);
     if (i_fd >= 0) {
       char psz_key[PSZ_KEY_SIZE + 2];
 
@@ -279,35 +293,10 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
     }
   }
 
-  /* Find our spot in the list */
-  p_newtitle = NULL;
-  p_title = dvdcss->p_titles;
-  while ((p_title != NULL) && (p_title->i_startlb < i_block)) {
-    p_newtitle = p_title;
-    p_title = p_title->p_next;
-  }
-
-  /* Save the found title */
-  p_title = p_newtitle;
-
-  /* Write in the new title and its key */
-  p_newtitle = (dvd_title *)malloc(sizeof(*p_newtitle));
-  if (p_newtitle == NULL) {
-    return -1;
-  }
-  p_newtitle->i_startlb = i_block;
-  memcpy(p_newtitle->p_key, p_title_key, DVD_KEY_SIZE);
-
-  /* Link it at the head of the (possibly empty) list */
-  if (p_title == NULL) {
-    p_newtitle->p_next = dvdcss->p_titles;
-    dvdcss->p_titles = p_newtitle;
-  }
-  /* Link the new title inside the list */
-  else {
-    p_newtitle->p_next = p_title->p_next;
-    p_title->p_next = p_newtitle;
-  }
+  dvd_title new_title = {};
+  new_title.i_startlb = i_block;
+  memcpy(new_title.p_key, p_title_key, DVD_KEY_SIZE);
+  dvdcss->p_titles.insert(title_it, new_title);
 
   memcpy(dvdcss->css.p_title_key, p_title_key, DVD_KEY_SIZE);
   return 0;
@@ -354,7 +343,7 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
 
   /* Decrypt disc key */
   switch (dvdcss->i_method) {
-  case DVDCSS_METHOD_KEY:
+  case dvdcss_method::key:
 
     /* Decrypt disc key with player key. */
     PrintKey(dvdcss, "decrypting disc key ", p_buffer);
@@ -368,10 +357,10 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
 
     /* Fallback, but not to DISC as the disc key might be faulty */
     memset(p_disc_key, 0, DVD_KEY_SIZE);
-    dvdcss->i_method = DVDCSS_METHOD_TITLE;
+    dvdcss->i_method = dvdcss_method::title;
     break;
 
-  case DVDCSS_METHOD_DISC:
+  case dvdcss_method::disc:
 
     /* Crack Disc key to be able to use it */
     memcpy(p_disc_key, p_buffer, DVD_KEY_SIZE);
@@ -382,7 +371,7 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
     }
     print_debug(dvdcss, "failed to crack the disc key");
     memset(p_disc_key, 0, DVD_KEY_SIZE);
-    dvdcss->i_method = DVDCSS_METHOD_TITLE;
+    dvdcss->i_method = dvdcss_method::title;
     break;
 
   default:
@@ -405,8 +394,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
   uint8_t p_key[DVD_KEY_SIZE];
   int i, i_ret = 0;
 
-  if (dvdcss->b_ioctls && (dvdcss->i_method == DVDCSS_METHOD_KEY ||
-                           dvdcss->i_method == DVDCSS_METHOD_DISC)) {
+  if (dvdcss->b_ioctls && (dvdcss->i_method == dvdcss_method::key ||
+                           dvdcss->i_method == dvdcss_method::disc)) {
     /* We have a decrypted Disc key and the ioctls are available,
      * read the title key and decrypt it.
      */

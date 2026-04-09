@@ -51,7 +51,7 @@ static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
 /*****************************************************************************
  * Error messages
  *****************************************************************************/
-void print_error_cpp(dvdcss_t dvdcss, const char *psz_string, ...) {
+void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
   va_list args;
 
   va_start(args, psz_string);
@@ -62,27 +62,7 @@ void print_error_cpp(dvdcss_t dvdcss, const char *psz_string, ...) {
 /*****************************************************************************
  * Debug messages
  *****************************************************************************/
-void print_debug_cpp(const dvdcss_t dvdcss, const char *psz_string, ...) {
-  va_list args;
-
-  va_start(args, psz_string);
-  vprint_debug(dvdcss, psz_string, args);
-  va_end(args);
-}
-
-#undef print_error
-#undef print_debug
-
-extern "C" void print_error(dvdcss_t dvdcss, const char *psz_string, ...) {
-  va_list args;
-
-  va_start(args, psz_string);
-  vprint_error(dvdcss, psz_string, args);
-  va_end(args);
-}
-
-extern "C" void print_debug(const dvdcss_t dvdcss, const char *psz_string,
-                            ...) {
+void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) {
   va_list args;
 
   va_start(args, psz_string);

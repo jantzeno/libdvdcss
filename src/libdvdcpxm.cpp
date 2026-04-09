@@ -47,25 +47,26 @@
 #include "libdvdcpxm.h"
 #include "libdvdcss.h"
 
+#include <array>
+#include <list>
+#include <memory>
+
 #define IS_SYNC_CODE(word)                                                     \
   ((word)[0] == 0x00 && (word)[1] == 0x00 && (word)[2] == 0x01 &&              \
    (word)[3] == 0xBA)
 
-typedef struct cpxm_cache {
-  p_cpxm cpxm;
+struct cpxm_cache_entry {
+  std::shared_ptr<cpxm_s> cpxm;
   dev_t st_dev;
-  struct cpxm_cache *p_next;
-} cpxm_cache;
+};
 
-cpxm_cache *g_cpxm_cache = NULL;
+static std::list<cpxm_cache_entry> g_cpxm_cache;
 
 /* these values are used by libdvdcpxm to process the Media Key Block */
 /* They are present inside DVD-Audio players and are used in conjunction with
  * keys taken from the disc in order to generate the final media_key used by the
  * C2 Cypher */
-uint32_t sbox_f[256];
-
-static uint8_t sbox[256] = {
+static constexpr std::array<uint8_t, 256> sbox = {
     0x3a, 0xd0, 0x9a, 0xb6, 0xf5, 0xc1, 0x16, 0xb7, 0x58, 0xf6, 0xed, 0xe6,
     0xd9, 0x8c, 0x57, 0xfc, 0xfd, 0x4b, 0x9b, 0x47, 0x0e, 0x8e, 0xff, 0xf3,
     0xbb, 0xba, 0x0a, 0x80, 0x15, 0xd7, 0x2b, 0x36, 0x6a, 0x43, 0x5a, 0x89,
@@ -90,7 +91,7 @@ static uint8_t sbox[256] = {
     0x06, 0xbc, 0x95, 0x78,
 };
 
-static device_key_t cppm_device_keys[] = {
+static constexpr std::array<device_key_t, 32> cppm_device_keys = {{
     {0x00, 0x4821, 0x6d05086b755c81}, {0x01, 0x091c, 0x97ace18dd26973},
     {0x02, 0x012a, 0xfefc0a25a38d42}, {0x03, 0x469b, 0x0780491970db2c},
     {0x04, 0x0f9b, 0x0bedd116d43484}, {0x05, 0x59b2, 0x566936bcebe294},
@@ -108,18 +109,47 @@ static device_key_t cppm_device_keys[] = {
     {0x0a, 0x2f82, 0xa964fc061af87c}, {0x0b, 0x236a, 0xb96d68856c45d5},
     {0x0c, 0x5beb, 0xd2ca3cbb7d13cc}, {0x0d, 0x3db6, 0x58cf827ff3c540},
     {0x0e, 0x4b22, 0xbb4037442a869c}, {0x0f, 0x59b5, 0x3a83e0ddf37a6e},
-};
+}};
 
-static device_key_t cprm_device_keys[] = {
-    {0x00, 0x0809, 0xd50fe4150d32d2}, {0x01, 0x0719, 0x3131c69e825462},
-    {0x02, 0x0408, 0x7c2e6878b3a494}, {0x03, 0x040a, 0x3c9f93ec5848a2},
-    {0x04, 0x03bc, 0x614f4bda9876a5}, {0x05, 0x0812, 0x2e901a9227fc47},
-    {0x06, 0x090d, 0xeebf4957d53d62}, {0x07, 0x0322, 0x6314ec2ca6b32b},
-    {0x08, 0x0035, 0x14f6d08c096483}, {0x09, 0x07c5, 0x8f7eff1d689a81},
-    {0x0a, 0x069a, 0xff4b538492c611}, {0x0b, 0x0bd8, 0x909300c14c1467},
-    {0x0c, 0x01d1, 0xba5826ef832e2b}, {0x0d, 0x0583, 0xa92e636998767d},
-    {0x0e, 0x02e8, 0x313f0a51478df8}, {0x0f, 0x08fc, 0xd28ce525a2be4b},
-};
+static constexpr std::array<device_key_t, 16> cprm_device_keys = {{
+    {0x00, 0x0809, 0xd50fe4150d32d2},
+    {0x01, 0x0719, 0x3131c69e825462},
+    {0x02, 0x0408, 0x7c2e6878b3a494},
+    {0x03, 0x040a, 0x3c9f93ec5848a2},
+    {0x04, 0x03bc, 0x614f4bda9876a5},
+    {0x05, 0x0812, 0x2e901a9227fc47},
+    {0x06, 0x090d, 0xeebf4957d53d62},
+    {0x07, 0x0322, 0x6314ec2ca6b32b},
+    {0x08, 0x0035, 0x14f6d08c096483},
+    {0x09, 0x07c5, 0x8f7eff1d689a81},
+    {0x0a, 0x069a, 0xff4b538492c611},
+    {0x0b, 0x0bd8, 0x909300c14c1467},
+    {0x0c, 0x01d1, 0xba5826ef832e2b},
+    {0x0d, 0x0583, 0xa92e636998767d},
+    {0x0e, 0x02e8, 0x313f0a51478df8},
+    {0x0f, 0x08fc, 0xd28ce525a2be4b},
+}};
+
+static constexpr uint8_t rol8_constexpr(uint8_t code, int n) {
+  return (uint8_t)((code << n) | (code >> (8 - n)));
+}
+
+static constexpr std::array<uint32_t, 256> build_sbox_f() {
+  std::array<uint32_t, 256> values = {};
+
+  for (size_t i = 0; i < values.size(); ++i) {
+    unsigned c0 = sbox[i];
+    const unsigned c1 = rol8_constexpr((uint8_t)(c0 ^ 0x65), 1);
+    const unsigned c2 = rol8_constexpr((uint8_t)(c0 ^ 0x2b), 5);
+    const unsigned c3 = rol8_constexpr((uint8_t)(c0 ^ 0xc9), 2);
+    c0 ^= (unsigned)i;
+    values[i] = (c3 << 24) + (c2 << 16) + (c1 << 8) + c0;
+  }
+
+  return values;
+}
+
+static constexpr auto sbox_f = build_sbox_f();
 
 /* Functions Used by the C2 Cypher */
 static inline uint32_t rol32(uint32_t code, int n) {
@@ -137,20 +167,6 @@ static inline uint32_t F(uint32_t code, uint32_t key) {
   work ^= sbox_f[work & 0xff];
   work ^= rol32(work, 9) ^ rol32(work, 22);
   return work;
-}
-
-void c2_init() {
-  int i;
-  unsigned c0, c1, c2, c3;
-
-  for (i = 0; i < 256; i++) {
-    c0 = sbox[i];
-    c1 = rol8((c0 ^ 0x65), 1);
-    c2 = rol8((c0 ^ 0x2b), 5);
-    c3 = rol8((c0 ^ 0xc9), 2);
-    c0 ^= i;
-    sbox_f[i] = (c3 << 24) + (c2 << 16) + (c1 << 8) + c0;
-  }
 }
 
 uint64_t c2_enc(uint64_t code, uint64_t key) {
@@ -231,7 +247,7 @@ void c2_ecbc(void *p_buffer, uint64_t key, int length) {
   key_round = 10;
 
   for (i = 0; i < length; i += 8) {
-    READ64_BE(inout, p_buffer);
+    inout = read64_be(p_buffer);
     L = (uint32_t)((inout >> 32) & 0xffffffff);
     R = (uint32_t)((inout) & 0xffffffff);
     ktmpa = (uint32_t)((inkey >> 32) & 0x00ffffff);
@@ -280,7 +296,7 @@ void c2_dcbc(void *p_buffer, uint64_t key, int length) {
   key_round = 10;
 
   for (i = 0; i < length; i += 8) {
-    READ64_BE(inout, buf);
+    inout = read64_be(buf);
 
     L = (uint32_t)((inout >> 32) & 0xffffffff);
     R = (uint32_t)((inout) & 0xffffffff);
@@ -355,8 +371,8 @@ uint8_t *cprm_get_mkb(dvdcss_t dvdcss) {
 /* This function retrieves the main key used to decryption; this key is derived
  * from applying the C2 cypher to the MKB and the DVD-Audio player device keys,
  * as well as a unique album_id and media_id */
-int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys,
-                uint64_t *p_media_key) {
+int process_mkb(uint8_t *p_mkb, const device_key_t *p_dev_keys,
+                size_t nr_dev_keys, uint64_t *p_media_key) {
   int mkb_pos, length, i, i_dev_key, no_more_keys, no_more_records;
   uint8_t record_type, column;
   uint64_t buffer, media_key, verification_data;
@@ -400,7 +416,7 @@ int process_mkb(uint8_t *p_mkb, device_key_t *p_dev_keys, int nr_dev_keys,
         */
         /* Get appropriate device key for column */
         no_more_keys = 1;
-        for (i = i_dev_key; i < nr_dev_keys; i++) {
+        for (i = i_dev_key; i < (int)nr_dev_keys; i++) {
           if (p_dev_keys[i].col == column) {
             no_more_keys = 0;
             i_dev_key = i;
@@ -453,22 +469,20 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
    * to read the mkb or the encryption type is cprm */
   /* if no file mkb file is passed, check cache */
   if (!p_input) {
-    cpxm_cache *cpxm_iterator = g_cpxm_cache;
     struct stat file_stat;
     fstat(dvdcss->i_fd, &file_stat);
-    while (cpxm_iterator != NULL) {
+    for (const auto &cache_entry : g_cpxm_cache) {
       /* look for match in cache */
-      if (file_stat.st_dev == cpxm_iterator->st_dev) {
-        dvdcss->cpxm = cpxm_iterator->cpxm;
+      if (file_stat.st_dev == cache_entry.st_dev) {
+        dvdcss->cpxm = cache_entry.cpxm;
         dvdcss->cpxm_was_cached = 0;
         return dvdcss->media_type;
       }
-      cpxm_iterator = cpxm_iterator->p_next;
     }
     return -1;
   }
 
-  p_cpxm cpxm = (p_cpxm)calloc(1, sizeof(cpxm_s));
+  auto cpxm = std::shared_ptr<cpxm_s>(new cpxm_s());
   if (!cpxm)
     return -1;
 
@@ -478,7 +492,6 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
 
   uint8_t *p_mkb;
 
-  c2_init();
   switch (dvdcss->media_type) {
   case COPYRIGHT_PROTECTION_NONE:
     ret = 0;
@@ -488,9 +501,8 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
     p_mkb = p_input;
     if (cppm_set_id_album(dvdcss) == 0) {
       if (p_mkb) {
-        ret = process_mkb(p_mkb, cppm_device_keys,
-                          sizeof(cppm_device_keys) / sizeof(*cppm_device_keys),
-                          &dvdcss->cpxm->media_key);
+        ret = process_mkb(p_mkb, cppm_device_keys.data(),
+                          cppm_device_keys.size(), &dvdcss->cpxm->media_key);
         free(p_mkb);
         if (ret)
           break;
@@ -501,9 +513,8 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
     if (cprm_set_id_media(dvdcss) == 0) {
       p_mkb = cprm_get_mkb(dvdcss);
       if (p_mkb) {
-        ret = process_mkb(p_mkb, cprm_device_keys,
-                          sizeof(cprm_device_keys) / sizeof(*cprm_device_keys),
-                          &dvdcss->cpxm->media_key);
+        ret = process_mkb(p_mkb, cprm_device_keys.data(),
+                          cprm_device_keys.size(), &dvdcss->cpxm->media_key);
         free(p_mkb);
         if (ret)
           break;
@@ -515,7 +526,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
 
       /* decrypt the encrypted title key */
       uint64_t k_te;
-      READ64_BE(k_te, p_input);
+      k_te = read64_be(p_input);
       uint64_t k_t = c2_dec(k_mu, k_te) & 0x00ffffffffffffff;
 
       /* store decrypted title key for vr decryption */
@@ -525,28 +536,9 @@ LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input) {
   }
 
   /* store in cache */
-  cpxm_cache *cpxm_cache_addition = (cpxm_cache *)malloc(sizeof(cpxm_cache));
-
-  if (!cpxm_cache_addition)
-    return -1;
-
   struct stat stat;
   fstat(dvdcss->i_fd, &stat);
-
-  /* create cache node */
-  cpxm_cache_addition->cpxm = dvdcss->cpxm;
-  cpxm_cache_addition->st_dev = stat.st_dev;
-  cpxm_cache_addition->p_next = NULL;
-
-  /* copy over so needs to be set only once */
-  if (g_cpxm_cache == NULL)
-    g_cpxm_cache = cpxm_cache_addition;
-  else {
-    cpxm_cache *cpxm_iterator = g_cpxm_cache;
-    while (cpxm_iterator->p_next != NULL)
-      cpxm_iterator = cpxm_iterator->p_next;
-    cpxm_iterator->p_next = cpxm_cache_addition;
-  }
+  g_cpxm_cache.push_back({dvdcss->cpxm, stat.st_dev});
   dvdcss->cpxm_was_cached = 1;
   return dvdcss->media_type;
 }
@@ -619,19 +611,19 @@ int cppm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t id_album,
   if (mpeg2_check_pes_scrambling_control(p_buffer)) {
     k_au = c2_g(id_album, media_key) & 0x00ffffffffffffff;
 
-    READ64_BE(d_kc_i, &p_buffer[24]);
+    d_kc_i = read64_be(&p_buffer[24]);
     k_i = c2_g(d_kc_i, k_au) & 0x00ffffffffffffff;
 
-    READ64_BE(d_kc_i, &p_buffer[32]);
+    d_kc_i = read64_be(&p_buffer[32]);
     k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
 
-    READ64_BE(d_kc_i, &p_buffer[40]);
+    d_kc_i = read64_be(&p_buffer[40]);
     k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
 
-    READ64_BE(d_kc_i, &p_buffer[48]);
+    d_kc_i = read64_be(&p_buffer[48]);
     k_i = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
 
-    READ64_BE(d_kc_i, &p_buffer[84]);
+    d_kc_i = read64_be(&p_buffer[84]);
     k_c = c2_g(d_kc_i, k_i) & 0x00ffffffffffffff;
 
     c2_dcbc(&p_buffer[DVDCPXM_BLOCK_SIZE - DVDCPXM_ENCRYPTED_SIZE], k_c,
@@ -681,7 +673,7 @@ int cprm_decrypt_block(uint8_t *p_buffer, int flags, uint64_t vr_k_t,
     k_i = vr_k_t + (apstb);
 
     /* read the Title Key Conversion Data */
-    READ64_BE(d_tkc, &p_buffer[84]);
+    d_tkc = read64_be(&p_buffer[84]);
     k_c = c2_g(k_i, d_tkc) & 0x00ffffffffffffff;
 
     c2_dcbc(&p_buffer[DVDCPXM_BLOCK_SIZE - DVDCPXM_ENCRYPTED_SIZE], k_c,
@@ -754,10 +746,9 @@ int dvdcpxm_decrypt(p_cpxm cpxm, int media_type, void *p_buffer, int flags) {
 
 /* this function is used internally */
 extern "C" int dvdcpxm_close_internal(dvdcss_t dvdcss) {
-  if (dvdcss->cpxm)
-    free(dvdcss->cpxm);
+  dvdcss->cpxm.reset();
 
-  if (!g_cpxm_cache)
+  if (g_cpxm_cache.empty())
     return 0;
 
   /* check ID */
@@ -765,25 +756,14 @@ extern "C" int dvdcpxm_close_internal(dvdcss_t dvdcss) {
   if (fstat(dvdcss->i_fd, &stat) < 0)
     return -1;
 
-  cpxm_cache *prev = NULL;
-  cpxm_cache *cpxm_iterator = g_cpxm_cache;
-
   /* remove only if cached */
-  while (cpxm_iterator != NULL && dvdcss->cpxm_was_cached) {
-    cpxm_cache *next = cpxm_iterator->p_next;
-    if (cpxm_iterator->st_dev == stat.st_dev) {
-      if (prev == NULL)
-        g_cpxm_cache = next;
-      else
-        prev->p_next = next;
-
-      free(cpxm_iterator->cpxm);
-      free(cpxm_iterator);
-      break;
-    } else
-      prev = cpxm_iterator;
-
-    cpxm_iterator = next;
+  if (dvdcss->cpxm_was_cached) {
+    for (auto it = g_cpxm_cache.begin(); it != g_cpxm_cache.end(); ++it) {
+      if (it->st_dev == stat.st_dev) {
+        g_cpxm_cache.erase(it);
+        break;
+      }
+    }
   }
   return 0;
 }
@@ -807,7 +787,7 @@ int dvdcpxm_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks, int i_flags) {
 
   /* Decrypt the blocks we managed to read */
   for (i_index = i_ret; i_index; i_index--) {
-    dvdcpxm_decrypt(dvdcss->cpxm, dvdcss->media_type, _p_buffer,
+    dvdcpxm_decrypt(dvdcss->cpxm.get(), dvdcss->media_type, _p_buffer,
                     DVDCPXM_RESET_CCI);
     _p_buffer = _p_buffer + DVDCSS_BLOCK_SIZE;
   }
@@ -849,7 +829,7 @@ int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks, int i_flags) {
       iov_len = _p_iovec->iov_len;
     }
     /* reseting CCI handled by decrypt */
-    dvdcpxm_decrypt(dvdcss->cpxm, dvdcss->media_type, iov_base,
+    dvdcpxm_decrypt(dvdcss->cpxm.get(), dvdcss->media_type, iov_base,
                     DVDCPXM_RESET_CCI);
 
     iov_base = (uint8_t *)iov_base + DVDCSS_BLOCK_SIZE;

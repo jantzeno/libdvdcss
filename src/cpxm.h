@@ -35,15 +35,15 @@
 
 #include "bswap.h"
 #include "dvdcss/dvdcss.h"
-#include <string.h>
+#include <cstdint>
+#include <cstring>
 
-#define READ64_BE(dest, src)                                                   \
-  do {                                                                         \
-    uint64_t read64_be_tmp_;                                                   \
-    memcpy(&read64_be_tmp_, (src), sizeof(read64_be_tmp_));                    \
-    B2N_64(read64_be_tmp_);                                                    \
-    (dest) = read64_be_tmp_;                                                   \
-  } while (0)
+[[nodiscard]] inline uint64_t read64_be(const void *src) noexcept {
+  uint64_t value;
+  std::memcpy(&value, src, sizeof(value));
+  B2N_64(value);
+  return value;
+}
 
 typedef struct cpxm {
   uint64_t media_key;

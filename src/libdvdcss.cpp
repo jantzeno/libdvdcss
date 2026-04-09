@@ -98,7 +98,9 @@
 #include "config.h"
 #include "libdvdcpxm.h"
 
+#include <filesystem>
 #include <limits.h>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,17 +146,19 @@
 #define MANUFACTURING_DATE_OFFSET 813
 #define MANUFACTURING_DATE_LENGTH 16
 
-static int exists_or_mkdir(const char *path, int perm) {
-#ifdef HAVE_BROKEN_MKDIR
-  (void)perm;
-#endif
-  /* mkdir() may return an error if making the directory would fail,
-   * even if the directory exists, so use stat() to test for existence
-   * before trying to make the directory. */
-  struct stat st;
-  if (stat(path, &st))
-    return mkdir(path, perm);
-  return 0;
+static int create_directories_if_needed(const std::filesystem::path &path) {
+  std::error_code error;
+
+  if (path.empty()) {
+    return -1;
+  }
+
+  if (std::filesystem::exists(path, error)) {
+    return error ? -1 : 0;
+  }
+
+  std::filesystem::create_directories(path, error);
+  return error ? -1 : 0;
 }
 
 static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
@@ -182,11 +186,11 @@ static int set_access_method(dvdcss_t dvdcss) {
     return 0;
 
   if (!strncmp(psz_method, "key", 4)) {
-    dvdcss->i_method = DVDCSS_METHOD_KEY;
+    dvdcss->i_method = dvdcss_method::key;
   } else if (!strncmp(psz_method, "disc", 5)) {
-    dvdcss->i_method = DVDCSS_METHOD_DISC;
+    dvdcss->i_method = dvdcss_method::disc;
   } else if (!strncmp(psz_method, "title", 5)) {
-    dvdcss->i_method = DVDCSS_METHOD_TITLE;
+    dvdcss->i_method = dvdcss_method::title;
   } else {
     print_error(dvdcss,
                 "unknown decryption method %s, please choose "
@@ -199,6 +203,7 @@ static int set_access_method(dvdcss_t dvdcss) {
 
 static int set_cache_directory(dvdcss_t dvdcss) {
   char *psz_cache = getenv("DVDCSS_CACHE");
+  std::string cache_directory;
 
   if (psz_cache && !strcmp(psz_cache, "off")) {
     return -1;
@@ -212,9 +217,7 @@ static int set_cache_directory(dvdcss_t dvdcss) {
      * C:\Documents and Settings\$USER\Application Data\dvdcss\ */
     if (SHGetFolderPathA(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL,
                          SHGFP_TYPE_CURRENT, psz_home) == S_OK) {
-      snprintf(dvdcss->psz_cachefile, PATH_MAX, "%s\\dvdcss", psz_home);
-      dvdcss->psz_cachefile[PATH_MAX - 1] = '\0';
-      psz_cache = dvdcss->psz_cachefile;
+      cache_directory = std::string(psz_home) + "\\dvdcss";
     }
 #else
 #ifdef __ANDROID__
@@ -222,7 +225,7 @@ static int set_cache_directory(dvdcss_t dvdcss) {
      * directory in userland */
     char *psz_home = "/sdcard/Android/data/org.videolan.dvdcss";
 
-    int i_ret = exists_or_mkdir(psz_home, 0755);
+    int i_ret = create_directories_if_needed(psz_home);
     if (i_ret < 0 && errno != EEXIST) {
       print_error(dvdcss, "failed creating home directory");
       psz_home = NULL;
@@ -247,39 +250,40 @@ static int set_cache_directory(dvdcss_t dvdcss) {
 
     /* Cache our keys in ${HOME}/.dvdcss/ */
     if (psz_home && psz_home[0]) {
-      int home_pos = 0;
-
 #ifdef __OS2__
       if (*psz_home == '/' || *psz_home == '\\') {
         const char *psz_unixroot = getenv("UNIXROOT");
 
         if (psz_unixroot && psz_unixroot[0] && psz_unixroot[1] == ':' &&
             psz_unixroot[2] == '\0') {
-          strcpy(dvdcss->psz_cachefile, psz_unixroot);
-          home_pos = 2;
+          cache_directory = psz_unixroot;
         }
       }
 #endif /* __OS2__ */
-      snprintf(dvdcss->psz_cachefile + home_pos, PATH_MAX - home_pos,
-               "%s/.dvdcss", psz_home);
-      dvdcss->psz_cachefile[PATH_MAX - 1] = '\0';
-      psz_cache = dvdcss->psz_cachefile;
+
+      if (cache_directory.empty()) {
+        cache_directory = std::string(psz_home) + "/.dvdcss";
+      } else {
+        cache_directory += std::string(psz_home) + "/.dvdcss";
+      }
     }
 #endif /* ! defined( _WIN32 ) */
   } else {
-    strncpy(dvdcss->psz_cachefile, psz_cache, PATH_MAX);
-    dvdcss->psz_cachefile[PATH_MAX - 1] = '\0';
+    cache_directory = psz_cache;
   }
 
   /* Check that there is enough space for the cache directory path and the
    * block filename. The +1s are path separators. */
-  if (psz_cache && strlen(psz_cache) + 1 + DISC_TITLE_LENGTH + 1 +
-                           MANUFACTURING_DATE_LENGTH + 1 + STRING_KEY_SIZE + 1 +
-                           sizeof(CACHE_TAG_NAME) >
-                       PATH_MAX) {
+  if (!cache_directory.empty() &&
+      cache_directory.size() + 1 + DISC_TITLE_LENGTH + 1 +
+              MANUFACTURING_DATE_LENGTH + 1 + STRING_KEY_SIZE + 1 +
+              sizeof(CACHE_TAG_NAME) >
+          PATH_MAX) {
     print_error(dvdcss, "cache directory name is too long");
     return -1;
   }
+
+  dvdcss->psz_cachefile = std::move(cache_directory);
   return 0;
 }
 
@@ -292,24 +296,24 @@ static int init_cache_dir(dvdcss_t dvdcss) {
   char psz_tagfile[PATH_MAX];
   int i_fd, i_ret;
 
-  i_ret = exists_or_mkdir(dvdcss->psz_cachefile, 0755);
+  i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
   if (i_ret < 0 && errno != EEXIST) {
     print_error(dvdcss, "failed creating cache directory '%s'",
-                dvdcss->psz_cachefile);
-    dvdcss->psz_cachefile[0] = '\0';
+                dvdcss->psz_cachefile.c_str());
+    dvdcss->psz_cachefile.clear();
     return -1;
   }
 
   i_ret = snprintf(psz_tagfile, PATH_MAX, "%s/" CACHE_TAG_NAME,
-                   dvdcss->psz_cachefile);
+                   dvdcss->psz_cachefile.c_str());
   if (i_ret < 0 || i_ret >= PATH_MAX) {
     if (i_ret < 0)
       print_error(dvdcss, "failed to compose cache directory tag path");
     else
       print_error(dvdcss,
                   "cache directory tag path too long: %s/" CACHE_TAG_NAME,
-                  dvdcss->psz_cachefile);
-    dvdcss->psz_cachefile[0] = '\0';
+                  dvdcss->psz_cachefile.c_str());
+    dvdcss->psz_cachefile.clear();
     return -1;
   }
 
@@ -404,25 +408,25 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   }
 
   /* We have a disc name or ID, we can create the cache subdirectory. */
-  i = strlen(dvdcss->psz_cachefile);
-  i += sprintf(dvdcss->psz_cachefile + i, "/%s-%s-%s", psz_title, psz_serial,
-               psz_key);
-  i_ret = exists_or_mkdir(dvdcss->psz_cachefile, 0755);
+  dvdcss->psz_cachefile += "/";
+  dvdcss->psz_cachefile += psz_title;
+  dvdcss->psz_cachefile += "-";
+  dvdcss->psz_cachefile += (char *)psz_serial;
+  dvdcss->psz_cachefile += "-";
+  dvdcss->psz_cachefile += psz_key;
+
+  i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
   if (i_ret < 0 && errno != EEXIST) {
     print_error(dvdcss, "failed creating cache subdirectory");
     goto error;
   }
-  i += sprintf(dvdcss->psz_cachefile + i, "/");
-
-  /* Pointer to the filename we will use. */
-  dvdcss->psz_block = dvdcss->psz_cachefile + i;
 
   print_debug(dvdcss, "Content Scrambling System (CSS) key cache dir: %s",
-              dvdcss->psz_cachefile);
+              dvdcss->psz_cachefile.c_str());
   return;
 
 error:
-  dvdcss->psz_cachefile[0] = '\0';
+  dvdcss->psz_cachefile.clear();
 }
 
 static void init_cache(dvdcss_t dvdcss) {
@@ -477,24 +481,23 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   int i_ret;
 
   /* Allocate the library structure. */
-  dvdcss_t dvdcss = (dvdcss_t)malloc(sizeof(*dvdcss));
+  auto dvdcss_state = std::make_unique<dvdcss_s>();
+  dvdcss_t dvdcss = dvdcss_state.get();
   if (dvdcss == NULL) {
     return NULL;
   }
 
   if (psz_target == NULL && (p_stream == NULL || p_stream_cb == NULL)) {
-    dvdcss->psz_device = NULL;
     goto error;
   }
 
   /* Initialize structure with default values. */
   dvdcss->i_fd = -1;
   dvdcss->i_pos = 0;
-  dvdcss->p_titles = NULL;
-  dvdcss->psz_device = psz_target ? strdup(psz_target) : NULL;
+  dvdcss->psz_device = psz_target ? psz_target : "";
   dvdcss->psz_error = "no error";
-  dvdcss->i_method = DVDCSS_METHOD_KEY;
-  dvdcss->psz_cachefile[0] = '\0';
+  dvdcss->i_method = dvdcss_method::key;
+  dvdcss->psz_cachefile.clear();
 
   dvdcss->p_stream = p_stream;
   dvdcss->p_stream_cb = p_stream_cb;
@@ -552,11 +555,9 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   /* Seek to the beginning, just for safety. */
   dvdcss->pf_seek(dvdcss, 0);
 
-  return dvdcss;
+  return dvdcss_state.release();
 
 error:
-  free(dvdcss->psz_device);
-  free(dvdcss);
   return NULL;
 }
 
@@ -571,7 +572,7 @@ error:
  * Useful to conveniently format error messages in external applications.
  */
 extern "C" const char *dvdcss_error(const dvdcss_t dvdcss) {
-  return dvdcss->psz_error;
+  return dvdcss->psz_error.c_str();
 }
 
 /**
@@ -600,7 +601,7 @@ extern "C" const char *dvdcss_error(const dvdcss_t dvdcss) {
 extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
   /* title cracking method is too slow to be used at each seek */
   if (((i_flags & DVDCSS_SEEK_MPEG) &&
-       (dvdcss->i_method != DVDCSS_METHOD_TITLE)) ||
+       (dvdcss->i_method != dvdcss_method::title)) ||
       (i_flags & DVDCSS_SEEK_KEY)) {
     /* check the title key */
     if (dvdcss_title(dvdcss, i_blocks)) {
@@ -747,25 +748,14 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
  * On return, the #dvdcss_t is invalidated and may not be used again.
  */
 extern "C" int dvdcss_close(dvdcss_t dvdcss) {
-  struct dvd_title *p_title;
   int i_ret;
-
-  /* Free our list of keys */
-  p_title = dvdcss->p_titles;
-  while (p_title) {
-    struct dvd_title *p_tmptitle = p_title->p_next;
-    free(p_title);
-    p_title = p_tmptitle;
-  }
-
-  i_ret = dvdcss_close_device(dvdcss);
-
-  free(dvdcss->psz_device);
 
   /* close cpxm related structures if they were used */
   dvdcpxm_close_internal(dvdcss);
 
-  free(dvdcss);
+  i_ret = dvdcss_close_device(dvdcss);
+
+  delete dvdcss;
 
   return i_ret;
 }

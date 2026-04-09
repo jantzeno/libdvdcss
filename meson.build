@@ -3,7 +3,7 @@ project('libdvdcss', 'c', 'cpp',
     meson_version: '>= 0.60.0',
     default_options: ['buildtype=debugoptimized',
                       'c_std=c17',
-                      'cpp_std=c++17',
+                      'cpp_std=c++20',
                       'default_library=both',
                       'warning_level=2'])
 

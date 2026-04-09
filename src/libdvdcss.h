@@ -24,7 +24,9 @@
 #ifndef DVDCSS_LIBDVDCSS_H
 #define DVDCSS_LIBDVDCSS_H
 
-#include <limits.h>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include <config.h>
 #ifdef HAVE_SYS_PARAM_H
@@ -40,17 +42,17 @@
 /*****************************************************************************
  * libdvdcss method: used like init flags
  *****************************************************************************/
-enum dvdcss_method {
-  DVDCSS_METHOD_KEY,
-  DVDCSS_METHOD_DISC,
-  DVDCSS_METHOD_TITLE,
+enum class dvdcss_method {
+  key,
+  disc,
+  title,
 };
 /*****************************************************************************
  * The libdvdcss structure
  *****************************************************************************/
 struct dvdcss_s {
   /* File descriptor */
-  char *psz_device;
+  std::string psz_device;
   dvdcss_fd_t i_fd;
   int i_pos;
 
@@ -60,23 +62,22 @@ struct dvdcss_s {
   int (*pf_readv)(dvdcss_t, const struct iovec *, int);
 
   /* Decryption stuff */
-  enum dvdcss_method i_method;
+  dvdcss_method i_method;
   struct css css;
   int b_ioctls;
   int b_scrambled;
-  struct dvd_title *p_titles;
+  std::vector<dvd_title> p_titles;
 
-  /* Key cache directory and pointer to the filename */
-  char psz_cachefile[PATH_MAX];
-  char *psz_block;
+  /* Key cache directory */
+  std::string psz_cachefile;
 
   /* Error management */
-  const char *psz_error;
+  std::string psz_error;
   int b_errors;
   int b_debug;
 
   /* struct to be used only internally in CPXM */
-  p_cpxm cpxm;
+  std::shared_ptr<cpxm_s> cpxm;
   /* to check if this was cached, or if it was copied from cache */
   /* will use to check if disc is being closed or if it's just a file */
   int cpxm_was_cached;
@@ -88,8 +89,7 @@ struct dvdcss_s {
 
 #ifdef _WIN32
   int b_file;
-  char *p_readv_buffer;
-  int i_readv_buf_size;
+  std::vector<uint8_t> p_readv_buffer;
 #endif /* _WIN32 */
 
   void *p_stream;
@@ -99,15 +99,7 @@ struct dvdcss_s {
 /*****************************************************************************
  * Functions used across the library
  *****************************************************************************/
-#ifdef __cplusplus
-void print_error_cpp(dvdcss_t, const char *, ...);
-void print_debug_cpp(const dvdcss_t, const char *, ...);
-
-#define print_error print_error_cpp
-#define print_debug print_debug_cpp
-#else
 void print_error(dvdcss_t, const char *, ...);
 void print_debug(const dvdcss_t, const char *, ...);
-#endif
 
 #endif /* DVDCSS_LIBDVDCSS_H */

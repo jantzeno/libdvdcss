@@ -182,7 +182,7 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
 
 #elif defined(_WIN32)
   DWORD tmp;
-  SCSI_PASS_THROUGH_DIRECT sptd = {0};
+  SCSI_PASS_THROUGH_DIRECT sptd = {};
   uint8_t p_buffer[8];
   sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
   sptd.DataBuffer = p_buffer;
@@ -1042,7 +1042,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
 
 #elif defined(_WIN32)
   DWORD tmp;
-  SCSI_PASS_THROUGH_DIRECT sptd = {0};
+  SCSI_PASS_THROUGH_DIRECT sptd = {};
   sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
   sptd.DataBuffer = p_data_buffer;
   sptd.DataTransferLength = CPRM_MEDIA_ID_SIZE + 4;
@@ -1161,7 +1161,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 
 #elif defined(_WIN32)
   DWORD tmp;
-  SCSI_PASS_THROUGH_DIRECT sptd = {0};
+  SCSI_PASS_THROUGH_DIRECT sptd = {};
   uint8_t p_buffer[CPRM_MKB_PACK_SIZE + 4];
   sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
   sptd.DataBuffer = p_buffer;

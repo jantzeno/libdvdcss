@@ -77,6 +77,10 @@
 #include "ioctl.h"
 #include "libdvdcss.h"
 
+#include <array>
+#include <new>
+#include <string_view>
+
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
@@ -185,12 +189,13 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
 
   int i;
 #else
-  const char *ppsz_devices[] = {"/dev/dvd", "/dev/cdrom", "/dev/hdc", NULL};
+  static constexpr std::array<std::string_view, 3> kDefaultDevices = {
+      "/dev/dvd", "/dev/cdrom", "/dev/hdc"};
   int i, i_fd;
 #endif
 
   /* If the device name is non-NULL or stream is set, return. */
-  if ((dvdcss->psz_device && dvdcss->psz_device[0]) || dvdcss->p_stream) {
+  if (!dvdcss->psz_device.empty() || dvdcss->p_stream) {
     return;
   }
 
@@ -219,8 +224,7 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
     /* FIXME: we want to differentiate between CD and DVD drives
      * using DeviceIoControl() */
     print_debug(dvdcss, "defaulting to drive `%s'", psz_device);
-    free(dvdcss->psz_device);
-    dvdcss->psz_device = strdup(psz_device);
+    dvdcss->psz_device = psz_device;
     return;
   }
 #elif defined(DARWIN_DVD_IOCTL)
@@ -272,8 +276,7 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
       CFRelease(psz_path);
       IOObjectRelease(next_media);
       IOObjectRelease(media_iterator);
-      free(dvdcss->psz_device);
-      dvdcss->psz_device = strdup(psz_buf);
+      dvdcss->psz_device = psz_buf;
       return;
     }
 
@@ -300,20 +303,19 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
         psz_dvd[0] += i;
 
         print_debug(dvdcss, "defaulting to drive `%s'", psz_dvd);
-        free(dvdcss->psz_device);
-        dvdcss->psz_device = strdup(psz_dvd);
+        dvdcss->psz_device = psz_dvd;
         return;
       }
     }
   }
 #else
-  for (i = 0; ppsz_devices[i]; i++) {
-    i_fd = open(ppsz_devices[i], 0);
+  for (i = 0; i < (int)kDefaultDevices.size(); i++) {
+    i_fd = open(kDefaultDevices[i].data(), 0);
     if (i_fd != -1) {
-      print_debug(dvdcss, "defaulting to drive `%s'", ppsz_devices[i]);
+      print_debug(dvdcss, "defaulting to drive `%s'",
+                  kDefaultDevices[i].data());
       close(i_fd);
-      free(dvdcss->psz_device);
-      dvdcss->psz_device = strdup(ppsz_devices[i]);
+      dvdcss->psz_device = kDefaultDevices[i];
       return;
     }
   }
@@ -325,14 +327,13 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
 extern "C" int dvdcss_open_device(dvdcss_t dvdcss) {
   const char *psz_device = getenv("DVDCSS_RAW_DEVICE");
   if (!psz_device) {
-    psz_device = dvdcss->psz_device;
+    psz_device = dvdcss->psz_device.c_str();
   }
   print_debug(dvdcss, "opening target `%s'", psz_device);
 
 #if defined(_WIN32)
   /* Initialize readv temporary buffer */
-  dvdcss->p_readv_buffer = NULL;
-  dvdcss->i_readv_buf_size = 0;
+  dvdcss->p_readv_buffer.clear();
 #endif
 
   /* if callback functions are initialized */
@@ -385,9 +386,8 @@ extern "C" int dvdcss_close_device(dvdcss_t dvdcss) {
 
 #if defined(_WIN32)
   /* Free readv temporary buffer */
-  free(dvdcss->p_readv_buffer);
-  dvdcss->p_readv_buffer = NULL;
-  dvdcss->i_readv_buf_size = 0;
+  dvdcss->p_readv_buffer.clear();
+  dvdcss->p_readv_buffer.shrink_to_fit();
 
   if (!dvdcss->b_file) {
     CloseHandle(DVDCSS_TO_HANDLE(dvdcss->i_fd));
@@ -767,18 +767,14 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
   int i_index;
   int i_blocks_read, i_blocks_total = 0;
   DWORD i_bytes;
+  const size_t requested_size = (size_t)i_blocks * (size_t)DVDCSS_BLOCK_SIZE;
 
   /* Check the size of the readv temp buffer, just in case we need to
    * realloc something bigger */
-  if (dvdcss->i_readv_buf_size < i_blocks * DVDCSS_BLOCK_SIZE) {
-    dvdcss->i_readv_buf_size = i_blocks * DVDCSS_BLOCK_SIZE;
-
-    free(dvdcss->p_readv_buffer);
-
-    /* Allocate a buffer which will be used as a temporary storage
-     * for readv */
-    dvdcss->p_readv_buffer = (char *)malloc(dvdcss->i_readv_buf_size);
-    if (!dvdcss->p_readv_buffer) {
+  if (dvdcss->p_readv_buffer.size() < requested_size) {
+    try {
+      dvdcss->p_readv_buffer.resize(requested_size);
+    } catch (const std::bad_alloc &) {
       print_error(dvdcss, "scatter input (readv) failed");
       dvdcss->i_pos = -1;
       return -1;
@@ -792,7 +788,7 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
   if (i_blocks_total <= 0)
     return 0;
 
-  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), dvdcss->p_readv_buffer,
+  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), dvdcss->p_readv_buffer.data(),
                 i_blocks_total, &i_bytes, NULL)) {
     /* The read failed... too bad.
      * As in the POSIX spec the file position is left
@@ -806,7 +802,7 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
   for (i_index = 0, i_blocks_total = i_blocks_read; i_blocks_total > 0;
        i_index++) {
     memcpy(p_iovec[i_index].iov_base,
-           dvdcss->p_readv_buffer +
+           dvdcss->p_readv_buffer.data() +
                (i_blocks_read - i_blocks_total) * DVDCSS_BLOCK_SIZE,
            p_iovec[i_index].iov_len);
     /* if we read less blocks than asked, we'll just end up copying
