@@ -96,12 +96,12 @@ Keep example/test programs building during the mixed-language period.
 
 Work:
 
-- [ ] Update source filenames when test files are renamed.
-- [ ] Verify any C++-only linker requirements are picked up automatically by Meson.
+- [x] Update source filenames when test files are renamed.
+- [x] Verify any C++-only linker requirements are picked up automatically by Meson.
 
 Exit criteria:
 
-- [ ] Both test executables still link after each relevant conversion.
+- [x] Both test executables still link after each relevant conversion.
 
 #### `src/dvdcss/dvdcss.h`
 
