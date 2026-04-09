@@ -31,6 +31,7 @@
 #include <sys/param.h>
 #endif
 
+#include "common.h"
 #include "cpxm.h"
 #include "css.h"
 #include "device.h"
@@ -50,7 +51,7 @@ enum dvdcss_method {
 struct dvdcss_s {
   /* File descriptor */
   char *psz_device;
-  int i_fd;
+  dvdcss_fd_t i_fd;
   int i_pos;
 
   /* File handling */

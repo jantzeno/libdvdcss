@@ -392,12 +392,19 @@ This file bridges library state to platform I/O callbacks and file descriptors.
 
 Focus:
 
-- [ ] Function-pointer assignments in `dvdcss_s`.
-- [ ] Raw buffer allocation and ownership.
-- [ ] Windows-specific `readv` emulation details.
+- [x] Function-pointer assignments in `dvdcss_s`.
+- [x] Raw buffer allocation and ownership.
+- [x] Windows-specific `readv` emulation details.
 
 Risk:
 High because it sits between core logic and all operating-system access.
+
+Validation note:
+
+- [x] The implementation now lives in `src/device.cpp`; the source already compiled as C++17, so the conversion stayed mechanical apart from making the mixed-language device entry points explicit in the renamed C++ unit.
+- [x] The `dvdcss_s` function-pointer assignments stayed behaviorally identical: stream, libc, Win2K, and OS/2 paths still install the same `pf_seek`, `pf_read`, and `pf_readv` targets, while the internal device descriptor now uses a handle-sized `dvdcss_fd_t` so the Win32 raw-device path no longer narrows `HANDLE` values through `int` during C++ compilation.
+- [x] Raw buffer ownership was preserved: the temporary Win32 `readv` buffer still allocates, resizes, and frees through the existing `malloc` and `free` flow, and explicit C++ pointer conversions were added only where the fallback `iovec` and Win32 scatter-read code previously relied on C-only implicit conversions.
+- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded, a tiny external-style C consumer still compiled cleanly against the public headers, and a forced MinGW-w64 C++ syntax check of `src/device.cpp` passed through the fallback `iovec` path used by the Windows-specific `readv` emulation.
 
 #### `src/ioctl.c` -> `src/ioctl.cpp`
 
@@ -465,7 +472,7 @@ Use one focused change per step.
 - [x] `cpxm.c` conversion.
 - [x] `libdvdcpxm.c` conversion.
 - [x] `css.c` plus `csstables.h` cleanup.
-- [ ] `device.c` conversion.
+- [x] `device.c` conversion.
 - [ ] `ioctl.c` conversion.
 - [ ] `libdvdcss.c` conversion.
 - [ ] `csstest.c` conversion.

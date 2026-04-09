@@ -1,5 +1,5 @@
 /*****************************************************************************
- * device.h: DVD device access
+ * device.cpp: DVD device access
  *****************************************************************************
  * Copyright (C) 1998-2006 VideoLAN
  *
@@ -65,6 +65,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+
+#define DVDCSS_TO_HANDLE(fd) ((HANDLE)(intptr_t)(fd))
 #endif
 
 #include "dvdcss/dvdcss.h"
@@ -101,7 +103,7 @@ static int win2k_readv(dvdcss_t, const struct iovec *, int);
 static int os2_open(dvdcss_t, const char *);
 #endif
 
-int dvdcss_use_ioctls(dvdcss_t dvdcss) {
+extern "C" int dvdcss_use_ioctls(dvdcss_t dvdcss) {
   if (dvdcss->p_stream)
     return 0;
 
@@ -152,7 +154,7 @@ int dvdcss_use_ioctls(dvdcss_t dvdcss) {
 #endif
 }
 
-void dvdcss_check_device(dvdcss_t dvdcss) {
+extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
 #if defined(_WIN32)
   DWORD drives;
   int i;
@@ -320,7 +322,7 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   print_error(dvdcss, "could not find a suitable default drive");
 }
 
-int dvdcss_open_device(dvdcss_t dvdcss) {
+extern "C" int dvdcss_open_device(dvdcss_t dvdcss) {
   const char *psz_device = getenv("DVDCSS_RAW_DEVICE");
   if (!psz_device) {
     psz_device = dvdcss->psz_device;
@@ -376,7 +378,7 @@ int dvdcss_open_device(dvdcss_t dvdcss) {
   }
 }
 
-int dvdcss_close_device(dvdcss_t dvdcss) {
+extern "C" int dvdcss_close_device(dvdcss_t dvdcss) {
   if (dvdcss->p_stream) {
     return 0;
   }
@@ -388,7 +390,7 @@ int dvdcss_close_device(dvdcss_t dvdcss) {
   dvdcss->i_readv_buf_size = 0;
 
   if (!dvdcss->b_file) {
-    CloseHandle((HANDLE)dvdcss->i_fd);
+    CloseHandle(DVDCSS_TO_HANDLE(dvdcss->i_fd));
   } else
 #endif
   {
@@ -474,7 +476,7 @@ static int win2k_open(dvdcss_t dvdcss, const char *psz_device) {
     return -1;
   }
 
-  dvdcss->i_fd = (int)h_fd;
+  dvdcss->i_fd = (dvdcss_fd_t)(intptr_t)h_fd;
   dvdcss->i_pos = 0;
 
   return 0;
@@ -568,8 +570,9 @@ static int win2k_seek(dvdcss_t dvdcss, int i_blocks) {
 
   li_seek.QuadPart = (LONGLONG)i_blocks * DVDCSS_BLOCK_SIZE;
 
-  li_seek.LowPart = SetFilePointer((HANDLE)dvdcss->i_fd, li_seek.LowPart,
-                                   &li_seek.HighPart, FILE_BEGIN);
+  li_seek.LowPart =
+      SetFilePointer(DVDCSS_TO_HANDLE(dvdcss->i_fd), li_seek.LowPart,
+                     &li_seek.HighPart, FILE_BEGIN);
   if ((li_seek.LowPart == INVALID_SET_FILE_POINTER) &&
       GetLastError() != NO_ERROR) {
     dvdcss->i_pos = -1;
@@ -658,8 +661,8 @@ static int stream_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
 static int win2k_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
   DWORD i_bytes;
 
-  if (!ReadFile((HANDLE)dvdcss->i_fd, p_buffer, i_blocks * DVDCSS_BLOCK_SIZE,
-                &i_bytes, NULL)) {
+  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), p_buffer,
+                i_blocks * DVDCSS_BLOCK_SIZE, &i_bytes, NULL)) {
     dvdcss->i_pos = -1;
     return -1;
   }
@@ -682,7 +685,7 @@ static int libc_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
 
   for (i_index = i_blocks; i_index; i_index--, p_iovec++) {
     i_len = p_iovec->iov_len;
-    p_base = p_iovec->iov_base;
+    p_base = (uint8_t *)p_iovec->iov_base;
 
     if (i_len <= 0) {
       continue;
@@ -774,7 +777,7 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
 
     /* Allocate a buffer which will be used as a temporary storage
      * for readv */
-    dvdcss->p_readv_buffer = (uint8_t *)malloc(dvdcss->i_readv_buf_size);
+    dvdcss->p_readv_buffer = (char *)malloc(dvdcss->i_readv_buf_size);
     if (!dvdcss->p_readv_buffer) {
       print_error(dvdcss, "scatter input (readv) failed");
       dvdcss->i_pos = -1;
@@ -789,8 +792,8 @@ static int win2k_readv(dvdcss_t dvdcss, const struct iovec *p_iovec,
   if (i_blocks_total <= 0)
     return 0;
 
-  if (!ReadFile((HANDLE)dvdcss->i_fd, dvdcss->p_readv_buffer, i_blocks_total,
-                &i_bytes, NULL)) {
+  if (!ReadFile(DVDCSS_TO_HANDLE(dvdcss->i_fd), dvdcss->p_readv_buffer,
+                i_blocks_total, &i_bytes, NULL)) {
     /* The read failed... too bad.
      * As in the POSIX spec the file position is left
      * unspecified after a failure */

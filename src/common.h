@@ -26,6 +26,14 @@
 #ifndef DVDCSS_COMMON_H
 #define DVDCSS_COMMON_H
 
+#include <stdint.h>
+
+#if defined(_WIN32)
+typedef intptr_t dvdcss_fd_t;
+#else
+typedef int dvdcss_fd_t;
+#endif
+
 #if defined(_WIN32)
 #include <io.h> /* _lseeki64 */
 
