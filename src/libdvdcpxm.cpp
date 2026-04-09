@@ -161,7 +161,7 @@ copy_cppm_mkb(const uint8_t *input_mkb) {
   return std::vector<uint8_t>(input_mkb, input_mkb + offset);
 }
 
-static constexpr uint8_t rol8_constexpr(uint8_t code, int n) noexcept {
+static constexpr uint8_t rol8(uint8_t code, int n) noexcept {
   return static_cast<uint8_t>((code << n) | (code >> (8 - n)));
 }
 
@@ -170,9 +170,9 @@ static constexpr std::array<uint32_t, 256> build_sbox_f() noexcept {
 
   for (size_t i = 0; i < values.size(); ++i) {
     unsigned c0 = sbox[i];
-    const unsigned c1 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0x65), 1);
-    const unsigned c2 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0x2b), 5);
-    const unsigned c3 = rol8_constexpr(static_cast<uint8_t>(c0 ^ 0xc9), 2);
+    const unsigned c1 = rol8(static_cast<uint8_t>(c0 ^ 0x65), 1);
+    const unsigned c2 = rol8(static_cast<uint8_t>(c0 ^ 0x2b), 5);
+    const unsigned c3 = rol8(static_cast<uint8_t>(c0 ^ 0xc9), 2);
     c0 ^= static_cast<unsigned>(i);
     values[i] = (c3 << 24) + (c2 << 16) + (c1 << 8) + c0;
   }
@@ -183,15 +183,13 @@ static constexpr std::array<uint32_t, 256> build_sbox_f() noexcept {
 static constexpr auto sbox_f = build_sbox_f();
 
 /* Functions Used by the C2 Cypher */
-static inline uint32_t rol32(uint32_t code, int n) noexcept {
+using c2_round_keys = std::array<uint32_t, 10>;
+
+static constexpr uint32_t rol32(uint32_t code, int n) noexcept {
   return (code << n) | (code >> (32 - n));
 }
 
-static inline uint8_t rol8(uint8_t code, int n) noexcept {
-  return (code << n) | (code >> (8 - n));
-}
-
-static inline uint32_t F(uint32_t code, uint32_t key) noexcept {
+static constexpr uint32_t F(uint32_t code, uint32_t key) noexcept {
   uint32_t work;
 
   work = code + key;
@@ -200,18 +198,14 @@ static inline uint32_t F(uint32_t code, uint32_t key) noexcept {
   return work;
 }
 
-uint64_t c2_enc(uint64_t code, uint64_t key) noexcept {
-  uint32_t L, R, t;
+static constexpr c2_round_keys build_c2_round_keys(uint64_t key) noexcept {
+  c2_round_keys sk = {};
   uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
-  uint32_t sk[10];
-  int round;
 
-  L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
-  R = static_cast<uint32_t>(code & 0xffffffffu);
   ktmpa = static_cast<uint32_t>((key >> 32) & 0x00ffffffu);
   ktmpb = static_cast<uint32_t>(key & 0xffffffffu);
 
-  for (round = 0; round < 10; round++) {
+  for (int round = 0; round < static_cast<int>(sk.size()); ++round) {
     ktmpa &= 0x00ffffff;
     sk[round] =
         ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
@@ -221,41 +215,17 @@ uint64_t c2_enc(uint64_t code, uint64_t key) noexcept {
     ktmpb = (ktmpb << 17) | ktmpd;
   }
 
-  for (round = 0; round < 10; round++) {
-    L += F(R, sk[round]);
-    t = L;
-    L = R;
-    R = t;
-  }
-  t = L;
-  L = R;
-  R = t;
-  return (static_cast<uint64_t>(L) << 32) | R;
+  return sk;
 }
 
-uint64_t c2_dec(uint64_t code, uint64_t key) noexcept {
-  uint32_t L, R, t;
-  uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
-  uint32_t sk[10];
-  int round;
+static constexpr uint64_t c2_encrypt_block(
+    uint64_t code, const c2_round_keys &round_keys) noexcept {
+  uint32_t L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
+  uint32_t R = static_cast<uint32_t>(code & 0xffffffffu);
+  uint32_t t;
 
-  L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
-  R = static_cast<uint32_t>(code & 0xffffffffu);
-  ktmpa = static_cast<uint32_t>((key >> 32) & 0x00ffffffu);
-  ktmpb = static_cast<uint32_t>(key & 0xffffffffu);
-
-  for (round = 0; round < 10; round++) {
-    ktmpa &= 0x00ffffff;
-    sk[round] =
-        ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
-    ktmpc = (ktmpb >> (32 - 17));
-    ktmpd = (ktmpa >> (24 - 17));
-    ktmpa = (ktmpa << 17) | ktmpc;
-    ktmpb = (ktmpb << 17) | ktmpd;
-  }
-
-  for (round = 9; round >= 0; round--) {
-    L -= F(R, sk[round]);
+  for (std::size_t round = 0; round < round_keys.size(); ++round) {
+    L += F(R, round_keys[round]);
     t = L;
     L = R;
     R = t;
@@ -267,16 +237,63 @@ uint64_t c2_dec(uint64_t code, uint64_t key) noexcept {
   return (static_cast<uint64_t>(L) << 32) | R;
 }
 
-uint64_t c2_g(uint64_t code, uint64_t key) noexcept {
+constexpr uint64_t c2_enc(uint64_t code, uint64_t key) noexcept {
+  return c2_encrypt_block(code, build_c2_round_keys(key));
+}
+
+static constexpr uint64_t c2_decrypt_block(
+    uint64_t code, const c2_round_keys &round_keys) noexcept {
+  uint32_t L = static_cast<uint32_t>((code >> 32) & 0xffffffffu);
+  uint32_t R = static_cast<uint32_t>(code & 0xffffffffu);
+  uint32_t t;
+
+  for (int round = static_cast<int>(round_keys.size()) - 1; round >= 0;
+       --round) {
+    L -= F(R, round_keys[round]);
+    t = L;
+    L = R;
+    R = t;
+  }
+
+  t = L;
+  L = R;
+  R = t;
+  return (static_cast<uint64_t>(L) << 32) | R;
+}
+
+constexpr uint64_t c2_dec(uint64_t code, uint64_t key) noexcept {
+  return c2_decrypt_block(code, build_c2_round_keys(key));
+}
+
+constexpr uint64_t c2_g(uint64_t code, uint64_t key) noexcept {
   return c2_enc(code, key) ^ code;
 }
 
+static constexpr bool matches_c2_vector(uint64_t code, uint64_t key,
+                                        uint64_t encrypted,
+                                        uint64_t g_value) noexcept {
+  return c2_enc(code, key) == encrypted && c2_dec(encrypted, key) == code &&
+         c2_g(code, key) == g_value;
+}
+
+/* Keep known-good pre-constexpr outputs pinned at compile time. */
+static_assert(matches_c2_vector(0x0011223344556677ULL, 0x006d05086b755c81ULL,
+                                0xd6d6a1cbd23b8e7eULL,
+                                0xd6c783f8966ee809ULL));
+static_assert(matches_c2_vector(0x8899aabbccddeeffULL, 0x00d50fe4150d32d2ULL,
+                                0xead20c952dd5780aULL,
+                                0x624ba62ee10896f5ULL));
+static_assert(matches_c2_vector(0x0123456789abcdefULL, 0x0001020304050607ULL,
+                                0x4b62abac869d01e8ULL,
+                                0x4a41eecb0f36cc07ULL));
+static_assert(matches_c2_vector(0xffffffffffffffffULL, 0x0000000000000000ULL,
+                                0x677345a1666887f8ULL,
+                                0x988cba5e99977807ULL));
+
 void c2_ecbc(std::span<uint8_t> buffer, uint64_t key) {
   uint32_t L, R, t;
-  uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
-  uint32_t sk[10];
   uint64_t inout, inkey;
-  int round, key_round, i;
+  int key_round, i;
 
   inkey = key;
   key_round = 10;
@@ -285,20 +302,9 @@ void c2_ecbc(std::span<uint8_t> buffer, uint64_t key) {
     inout = read64_be(buffer.data() + i);
     L = static_cast<uint32_t>((inout >> 32) & 0xffffffffu);
     R = static_cast<uint32_t>(inout & 0xffffffffu);
-    ktmpa = static_cast<uint32_t>((inkey >> 32) & 0x00ffffffu);
-    ktmpb = static_cast<uint32_t>(inkey & 0xffffffffu);
+    const auto sk = build_c2_round_keys(inkey);
 
-    for (round = 0; round < key_round; round++) {
-      ktmpa &= 0x00ffffff;
-      sk[round] =
-          ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
-      ktmpc = (ktmpb >> (32 - 17));
-      ktmpd = (ktmpa >> (24 - 17));
-      ktmpa = (ktmpa << 17) | ktmpc;
-      ktmpb = (ktmpb << 17) | ktmpd;
-    }
-
-    for (round = 0; round < 10; round++) {
+    for (int round = 0; round < 10; round++) {
       L += F(R, sk[round % key_round]);
 
       if (round == 4) [[unlikely]] {
@@ -321,10 +327,8 @@ void c2_ecbc(std::span<uint8_t> buffer, uint64_t key) {
 
 void c2_dcbc(std::span<uint8_t> buffer, uint64_t key) {
   uint32_t L, R, t;
-  uint32_t ktmpa, ktmpb, ktmpc, ktmpd;
-  uint32_t sk[10];
   uint64_t inout, inkey;
-  int round, key_round, i;
+  int key_round, i;
   uint8_t *buf = buffer.data();
 
   inkey = key;
@@ -335,20 +339,9 @@ void c2_dcbc(std::span<uint8_t> buffer, uint64_t key) {
 
     L = static_cast<uint32_t>((inout >> 32) & 0xffffffffu);
     R = static_cast<uint32_t>(inout & 0xffffffffu);
-    ktmpa = static_cast<uint32_t>((inkey >> 32) & 0x00ffffffu);
-    ktmpb = static_cast<uint32_t>(inkey & 0xffffffffu);
+    const auto sk = build_c2_round_keys(inkey);
 
-    for (round = 0; round < key_round; round++) {
-      ktmpa &= 0x00ffffff;
-      sk[round] =
-          ktmpb + (static_cast<uint32_t>(sbox[(ktmpa & 0xff) ^ round]) << 4);
-      ktmpc = (ktmpb >> (32 - 17));
-      ktmpd = (ktmpa >> (24 - 17));
-      ktmpa = (ktmpa << 17) | ktmpc;
-      ktmpb = (ktmpb << 17) | ktmpd;
-    }
-
-    for (round = 9; round >= 0; round--) {
+    for (int round = 9; round >= 0; round--) {
       L -= F(R, sk[round % key_round]);
       t = L;
       L = R;

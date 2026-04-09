@@ -86,7 +86,7 @@
 
 - [x] Make `sbox`, `perm_variant`, device-key tables `constexpr std::array`
 - [x] Convert runtime `c2_init()` S-box expansion into a `consteval` / `constexpr` generator function
-- [ ] Validate crypto output at compile time with `static_assert` on known test vectors
+- [x] Validate crypto output at compile time with `static_assert` on known test vectors
 
 ### Ioctl platform dispatch (`src/ioctl.cpp`)
 
