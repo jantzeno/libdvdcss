@@ -26,47 +26,43 @@
 #ifndef DVDCSS_COMMON_H
 #define DVDCSS_COMMON_H
 
-#if defined( _WIN32 )
-#   include <io.h>                                             /* _lseeki64 */
+#if defined(_WIN32)
+#include <io.h> /* _lseeki64 */
 
 /* several type definitions */
-#   if defined( __MINGW32__ )
-#       undef lseek
-#       define lseek _lseeki64
-#       if !defined( _OFF_T_ )
+#if defined(__MINGW32__)
+#undef lseek
+#define lseek _lseeki64
+#if !defined(_OFF_T_)
 typedef long long _off_t;
 typedef _off_t off_t;
-#           define _OFF_T_
-#       else
-#           define off_t long long
-#       endif
-#   endif /* defined( __MINGW32__ ) */
+#define _OFF_T_
+#endif
+#endif /* defined( __MINGW32__ ) */
 
-#   if defined( _MSC_VER )
-#       undef lseek
-#       define lseek _lseeki64
-#       if !defined( _OFF_T_DEFINED )
+#if defined(_MSC_VER)
+#undef lseek
+#define lseek _lseeki64
+#if !defined(_OFF_T_DEFINED)
 typedef __int64 off_t;
-#           define _OFF_T_DEFINED
-#       else
-#           define off_t __int64
-#       endif
-#       define ssize_t SSIZE_T
-#       define snprintf _snprintf
-#       define strdup _strdup
-#       define open _open
-#       define close _close
-#       define read _read
-#       define write _write
-#   endif /* defined( _MSC_VER ) */
+#define _OFF_T_DEFINED
+#endif
+#define ssize_t SSIZE_T
+#define snprintf _snprintf
+#define strdup _strdup
+#define open _open
+#define close _close
+#define read _read
+#define write _write
+#endif /* defined( _MSC_VER ) */
 
 #endif /* defined( _WIN32 ) */
 
 #ifdef __ANDROID__
-# undef  lseek
-# define lseek lseek64
-# undef  off_t
-# define off_t off64_t
+#undef lseek
+#define lseek lseek64
+#undef off_t
+#define off_t off64_t
 #endif /* __ANDROID__ */
 
 #endif /* DVDCSS_COMMON_H */
