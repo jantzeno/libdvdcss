@@ -30,7 +30,7 @@
 /*****************************************************************************
  * ioctl_SendRPC: set RPC status for the drive
  *****************************************************************************/
-static int ioctl_SendRPC(int i_fd, int i_pdrc) {
+static int ioctl_SendRPC(dvdcss_fd_t i_fd, int i_pdrc) {
   int i_ret;
 
   /* Shut up warnings about unused parameters. */
@@ -104,11 +104,12 @@ static int ioctl_SendRPC(int i_fd, int i_pdrc) {
   p_buffer[1] = 6;
   p_buffer[4] = i_pdrc;
 
-  i_ret = DeviceIoControl((HANDLE)i_fd, IOCTL_SCSI_PASS_THROUGH_DIRECT, &sptd,
-                          sizeof(SCSI_PASS_THROUGH_DIRECT), &sptd,
-                          sizeof(SCSI_PASS_THROUGH_DIRECT), &tmp, NULL)
-              ? 0
-              : -1;
+  i_ret =
+      DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_SCSI_PASS_THROUGH_DIRECT,
+                      &sptd, sizeof(SCSI_PASS_THROUGH_DIRECT), &sptd,
+                      sizeof(SCSI_PASS_THROUGH_DIRECT), &tmp, NULL)
+          ? 0
+          : -1;
 
 #elif defined(__QNXNTO__)
 
@@ -140,7 +141,7 @@ static int ioctl_SendRPC(int i_fd, int i_pdrc) {
   return i_ret;
 }
 
-static int set_region(int fd, int region) {
+static int set_region(dvdcss_fd_t fd, int region) {
   int ret, region_mask;
 
   if (region > 8 || region <= 0) {
@@ -162,7 +163,7 @@ static int set_region(int fd, int region) {
   return 0;
 }
 
-static int print_region(int fd) {
+static int print_region(dvdcss_fd_t fd) {
   int type, region_mask, rpc_scheme;
   int region = 1;
   int ret;
@@ -230,7 +231,10 @@ static void usage(void) {
 }
 
 int main(int argc, char *argv[]) {
-  char device_name[FILENAME_MAX], c, set, region = 0;
+  char device_name[FILENAME_MAX];
+  int c;
+  int set;
+  int region = 0;
   int ret;
   dvdcss_t dvdcss;
 
@@ -240,12 +244,13 @@ int main(int argc, char *argv[]) {
     switch (c) {
     case 'd':
       strncpy(device_name, optarg, FILENAME_MAX - 1);
+      device_name[FILENAME_MAX - 1] = '\0';
       break;
     case 's':
       set = 1;
       break;
     case 'r':
-      region = strtoul(optarg, NULL, 10);
+      region = static_cast<int>(strtoul(optarg, NULL, 10));
       printf("region %d\n", region);
       break;
     case 'h':
@@ -280,12 +285,12 @@ int main(int argc, char *argv[]) {
   if (set) {
     if (!region) {
       fprintf(stderr, "you must specify the region!\n");
-      exit(0);
+      return 0;
     }
 
     if ((ret = set_region(dvdcss->i_fd, region)) < 0)
       return ret;
   }
 
-  exit(0);
+  return 0;
 }

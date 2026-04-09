@@ -1,4 +1,4 @@
-/* csstest.c - test program for libdvdcss
+/* csstest.cpp - test program for libdvdcss
  *
  * Sam Hocevar <sam@zoy.org> - June 2001
  *   Updated on Nov 13th 2001 for libdvdcss version 1.0.0
@@ -7,6 +7,7 @@
  *
  * This piece of code is public domain */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,8 +15,8 @@
 
 #define DVDCSS_DSI_PES 0x400
 
-static int isscrambled(unsigned char *);
-static void dumpsector(unsigned char *);
+static int isscrambled(const unsigned char *);
+static void dumpsector(const unsigned char *);
 
 int main(int i_argc, char *ppsz_argv[]) {
   dvdcss_t dvdcss;
@@ -45,12 +46,12 @@ int main(int i_argc, char *ppsz_argv[]) {
   }
 
   /* Align our read buffer */
-  p_buffer =
-      p_data + DVDCSS_BLOCK_SIZE - ((long int)p_data & (DVDCSS_BLOCK_SIZE - 1));
+  p_buffer = p_data + DVDCSS_BLOCK_SIZE -
+             (reinterpret_cast<uintptr_t>(p_data) & (DVDCSS_BLOCK_SIZE - 1));
 
   /* Set the file descriptor at sector i_sector and read one sector */
   i_ret = dvdcss_seek(dvdcss, i_sector, DVDCSS_NOFLAGS);
-  if (i_ret != (int)i_sector) {
+  if (i_ret != static_cast<int>(i_sector)) {
     printf("seek failed (%s)\n", dvdcss_error(dvdcss));
     dvdcss_close(dvdcss);
     return i_ret;
@@ -72,7 +73,7 @@ int main(int i_argc, char *ppsz_argv[]) {
     /* Set the file descriptor position to the previous location */
     /* ... and get the appropriate key for this sector */
     i_ret = dvdcss_seek(dvdcss, i_sector, DVDCSS_SEEK_KEY);
-    if (i_ret != (int)i_sector) {
+    if (i_ret != static_cast<int>(i_sector)) {
       printf("seek failed (%s)\n", dvdcss_error(dvdcss));
       dvdcss_close(dvdcss);
       return i_ret;
@@ -100,17 +101,17 @@ int main(int i_argc, char *ppsz_argv[]) {
 }
 
 /* Check if a sector is scrambled */
-static int isscrambled(unsigned char *p_buffer) {
+static int isscrambled(const unsigned char *p_buffer) {
   return p_buffer[0x14] & 0x30;
 }
 
-static void dumpmem(unsigned char *p_buffer, int sz) {
+static void dumpmem(const unsigned char *p_buffer, int sz) {
   for (; sz; sz--, p_buffer++)
     printf("%.2x", *p_buffer);
 }
 
 /* Print parts of a 2048 bytes buffer */
-static void dumpsector(unsigned char *p_buffer) {
+static void dumpsector(const unsigned char *p_buffer) {
   /* print pack header and first PES bytes up to flags */
   dumpmem(&p_buffer[0], 21);
   printf("...");

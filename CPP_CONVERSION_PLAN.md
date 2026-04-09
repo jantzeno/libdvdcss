@@ -425,7 +425,7 @@ Validation note:
 - [x] The implementation now lives in `src/ioctl.cpp`; the Linux-active source already compiled as C++17, so the conversion stayed mechanical while preserving the existing platform-specific request-structure layouts and ioctl call flow.
 - [x] The private ioctl boundary now matches the converted device layer by using `dvdcss_fd_t` in `src/ioctl.h` and `src/ioctl.cpp`, which avoids narrowing Win32 `HANDLE` values back through `int` during C++ compilation while leaving non-Windows paths behaviorally unchanged.
 - [x] Win32-specific `DeviceIoControl()` call sites now route through a narrow handle-cast helper, and the existing manual buffer handling stayed in place: request buffers, key buffers, and CPRM scratch buffers still use the current raw stack or `malloc` storage model, with only the type-boundary cleanup needed for C++ acceptance.
-- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded after the rename, `test/dvd_region.c` was updated to include `ioctl.cpp` so the example target still builds during the mixed-language phase, a tiny external-style C consumer still compiled cleanly against the public headers, and a wrapped MinGW-w64 C++ syntax check passed for the Windows ioctl path after stripping Linux-only generated config branches.
+- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded after the rename, `test/dvd_region.cpp` continues to include `ioctl.cpp` so the example target still builds during the mixed-language phase, a tiny external-style C consumer still compiled cleanly against the public headers, and a wrapped MinGW-w64 C++ syntax check passed for the Windows ioctl path after stripping Linux-only generated config branches.
 
 ### 6. Top-Level Library Orchestration
 
@@ -460,8 +460,14 @@ It depends only on the public API and should validate that C-callable headers st
 
 Focus:
 
-- [ ] Replace legacy C-style casts if needed.
-- [ ] Keep behavior identical.
+- [x] Replace legacy C-style casts if needed.
+- [x] Keep behavior identical.
+
+Validation note:
+
+- [x] The implementation now lives in `test/csstest.cpp`, which means the example is now a direct C++ consumer of the installed `dvdcss/dvdcss.h` API rather than a C source compiled in a mixed-language tree.
+- [x] Behavior stayed aligned with the original test: the sector-read flow, scrambling check, and dump output paths were left intact, while the old alignment expression now uses `reinterpret_cast<uintptr_t>` and the buffer-inspection helpers now take `const unsigned char *` so the file compiles cleanly as C++ without changing what it prints.
+- [x] Meson was reconfigured after the filename change, native C++ syntax checks passed for `test/csstest.cpp`, the examples-enabled build linked successfully, running the built `csstest` binary without arguments still produced its usage text, and a tiny external-style C consumer continued to compile cleanly against the public headers.
 
 #### `test/dvd_region.c` -> `test/dvd_region.cpp`
 
@@ -470,11 +476,17 @@ It directly includes `ioctl.c`, which makes it the most awkward test-side migrat
 
 Focus:
 
-- [ ] Decide whether to keep source inclusion of `ioctl.c` or refactor the needed helpers into a reusable internal unit first.
-- [ ] Verify C++ compilation does not create duplicate-definition or linkage surprises.
+- [x] Decide whether to keep source inclusion of `ioctl.cpp` or refactor the needed helpers into a reusable internal unit first.
+- [x] Verify C++ compilation does not create duplicate-definition or linkage surprises.
 
 Risk:
 High because it couples directly to internal implementation details.
+
+Validation note:
+
+- [x] The implementation now lives in `test/dvd_region.cpp`, and the direct inclusion strategy was intentionally kept for this final test-side migration step: the test still includes `ioctl.cpp` so it can reuse the internal RPC helpers without introducing a late refactor in the ioctl layer.
+- [x] The C++ conversion cleaned up the private fd boundary instead of changing behavior: the local RPC helper wrappers now accept `dvdcss_fd_t`, the Win32 send-key path uses the same `DVDCSS_TO_HANDLE()` helper pattern as `src/ioctl.cpp`, and command-line parsing now uses explicit `int` state plus guaranteed device-name termination.
+- [x] Native C++ syntax checks passed for `test/dvd_region.cpp`, `meson compile -C builddir-tests-mixed` linked the renamed binary cleanly, running the built `dvd_region -h` binary still produced the expected usage text, and a wrapped MinGW-w64 C++ syntax check passed for the Windows fallback path after stripping Unix-only generated config probes from the wrapper command.
 
 ## Suggested Commit Sequence
 
@@ -490,8 +502,8 @@ Use one focused change per step.
 - [x] `device.c` conversion.
 - [x] `ioctl.c` conversion.
 - [x] `libdvdcss.c` conversion.
-- [ ] `csstest.c` conversion.
-- [ ] `dvd_region.c` conversion and possible test refactor.
+- [x] `csstest.c` conversion.
+- [x] `dvd_region.c` conversion and possible test refactor.
 - [ ] Final cleanup: remove leftover C-only build settings and switch the project fully to C++ if no `.c` sources remain.
 
 ## Definition Of Done Per File
@@ -525,7 +537,7 @@ Recommended milestone validations:
 - [ ] `src/ioctl.h` and `src/ioctl.c`: system APIs, packed data, bitfields, and platform-specific macros.
 - [ ] `src/libdvdcss.h`: central state struct shared across almost every module.
 - [ ] `src/common.h`: Windows compatibility typedefs and macro remapping.
-- [ ] `test/dvd_region.c`: includes an implementation file directly.
+- [ ] `test/dvd_region.cpp`: includes an implementation file directly.
 - [ ] Any allocation site that currently relies on implicit `malloc` to typed-pointer conversion.
 
 ## Follow-Up Cleanup After Full Conversion
