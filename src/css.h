@@ -58,7 +58,7 @@ typedef struct css {
 int dvdcss_test(dvdcss_t);
 int dvdcss_title(dvdcss_t, int);
 int dvdcss_disckey(dvdcss_t);
-int dvdcss_unscramble(uint8_t *, uint8_t *);
+int dvdcss_unscramble(dvd_key, uint8_t *);
 
 /* exported for USB authentification in CPXM */
 int GetBusKey(dvdcss_t);

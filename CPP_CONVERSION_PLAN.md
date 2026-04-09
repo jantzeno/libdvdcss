@@ -201,8 +201,14 @@ Defines shared internal structures used by the core library.
 
 Work:
 
-- [ ] Keep POD layout stable.
-- [ ] Make typedefs and forward declarations C++-clean.
+- [x] Keep POD layout stable.
+- [x] Make typedefs and forward declarations C++-clean.
+
+Validation note:
+
+- [x] `dvd_key`, `dvd_title`, and `css` remain plain data declarations with stable field order and no C++-only members; C++ validation confirmed the structs still satisfy standard-layout/trivial expectations for the current implementation style.
+- [x] The `dvdcss_unscramble()` prototype in `src/css.h` now matches the implementation by using the `dvd_key` typedef for the key parameter, removing the lingering array-bound/signature mismatch warning without changing call-site behavior.
+- [x] Mixed-language rebuild validation passed after the prototype cleanup, and no additional typedef or forward-declaration changes were required for C++ compatibility.
 
 #### `src/device.h`
 
