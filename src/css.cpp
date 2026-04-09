@@ -68,20 +68,20 @@ static void PrintKey(dvdcss_t, const char *, const uint8_t *);
 static void CryptKey(int, int, const uint8_t *, uint8_t *);
 static void DecryptKey(uint8_t, const uint8_t *, const uint8_t *, uint8_t *);
 
-static int DecryptDiscKey(dvdcss_t, const uint8_t *, dvd_key);
+static int DecryptDiscKey(dvdcss_t, const uint8_t *, dvdcss_key &);
 static int CrackDiscKey(uint8_t *);
 
-static void DecryptTitleKey(dvd_key, dvd_key);
+static void DecryptTitleKey(const dvdcss_key &, dvdcss_key &);
 static int RecoverTitleKey(int, const uint8_t *, const uint8_t *,
                            const uint8_t *, uint8_t *);
-static int CrackTitleKey(dvdcss_t, int, int, dvd_key);
+static int CrackTitleKey(dvdcss_t, int, int, dvdcss_key &);
 
 static int AttackPattern(const uint8_t p_sec[DVDCSS_BLOCK_SIZE], uint8_t *);
 #if 0
 static int  AttackPadding   ( const uint8_t[] );
 #endif
 
-static int dvdcss_titlekey(dvdcss_t, int, dvd_key);
+static int dvdcss_titlekey(dvdcss_t, int, dvdcss_key &);
 
 static int build_cache_block_path(const dvdcss_t dvdcss, int i_block,
                                   char *psz_path, size_t path_size) {
@@ -200,7 +200,7 @@ extern "C" int dvdcss_test(dvdcss_t dvdcss) {
  * not be external if possible.
  *****************************************************************************/
 extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
-  dvd_key p_title_key;
+  dvdcss_key p_title_key = {};
   int i_fd, i_ret = -1, b_cache = 0;
   auto title_it =
       std::lower_bound(dvdcss->p_titles.begin(), dvdcss->p_titles.end(),
@@ -215,7 +215,7 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   /* Check if we've already cracked this key */
   if (title_it != dvdcss->p_titles.end() && title_it->i_startlb == i_block) {
     /* We've already cracked this key, nothing to do */
-    memcpy(dvdcss->css.p_title_key, title_it->p_key, sizeof(title_it->p_key));
+    dvdcss->css.p_title_key = title_it->p_key;
     return 0;
   }
 
@@ -238,12 +238,10 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
       if (read(i_fd, psz_key, PSZ_KEY_SIZE - 1) == PSZ_KEY_SIZE - 1 &&
           sscanf(psz_key, "%x:%x:%x:%x:%x", &k0, &k1, &k2, &k3, &k4) == 5) {
-        p_title_key[0] = k0;
-        p_title_key[1] = k1;
-        p_title_key[2] = k2;
-        p_title_key[3] = k3;
-        p_title_key[4] = k4;
-        PrintKey(dvdcss, "title key found in cache ", p_title_key);
+        p_title_key = {static_cast<uint8_t>(k0), static_cast<uint8_t>(k1),
+                       static_cast<uint8_t>(k2), static_cast<uint8_t>(k3),
+                       static_cast<uint8_t>(k4)};
+        PrintKey(dvdcss, "title key found in cache ", p_title_key.data());
 
         /* Don't try to save it again */
         b_cache = 0;
@@ -295,10 +293,10 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
   dvd_title new_title = {};
   new_title.i_startlb = i_block;
-  memcpy(new_title.p_key, p_title_key, DVD_KEY_SIZE);
+  new_title.p_key = p_title_key;
   dvdcss->p_titles.insert(title_it, new_title);
 
-  memcpy(dvdcss->css.p_title_key, p_title_key, DVD_KEY_SIZE);
+  dvdcss->css.p_title_key = p_title_key;
   return 0;
 }
 
@@ -314,7 +312,7 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
  *****************************************************************************/
 extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
   unsigned char p_buffer[DVD_DISCKEY_SIZE];
-  dvd_key p_disc_key;
+  dvdcss_key p_disc_key = {};
   int i;
 
   if (GetBusKey(dvdcss) < 0) {
@@ -332,7 +330,7 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
     /* Region mismatch (or region not set) is the most likely source. */
     print_error(dvdcss, "authentication success flag (ASF) not 1 after "
                         "reading disc key (region mismatch?)");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
@@ -348,7 +346,7 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
     /* Decrypt disc key with player key. */
     PrintKey(dvdcss, "decrypting disc key ", p_buffer);
     if (!DecryptDiscKey(dvdcss, p_buffer, p_disc_key)) {
-      PrintKey(dvdcss, "decrypted disc key is ", p_disc_key);
+      PrintKey(dvdcss, "decrypted disc key is ", p_disc_key.data());
       break;
     }
     print_debug(dvdcss, "failed to decrypt the disc key, "
@@ -356,32 +354,32 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
                         "cracking title keys instead");
 
     /* Fallback, but not to DISC as the disc key might be faulty */
-    memset(p_disc_key, 0, DVD_KEY_SIZE);
+    p_disc_key.fill(0);
     dvdcss->i_method = dvdcss_method::title;
     break;
 
   case dvdcss_method::disc:
 
     /* Crack Disc key to be able to use it */
-    memcpy(p_disc_key, p_buffer, DVD_KEY_SIZE);
-    PrintKey(dvdcss, "cracking disc key ", p_disc_key);
-    if (!CrackDiscKey(p_disc_key)) {
-      PrintKey(dvdcss, "cracked disc key is ", p_disc_key);
+    std::copy_n(p_buffer, DVD_KEY_SIZE, p_disc_key.begin());
+    PrintKey(dvdcss, "cracking disc key ", p_disc_key.data());
+    if (!CrackDiscKey(p_disc_key.data())) {
+      PrintKey(dvdcss, "cracked disc key is ", p_disc_key.data());
       break;
     }
     print_debug(dvdcss, "failed to crack the disc key");
-    memset(p_disc_key, 0, DVD_KEY_SIZE);
+    p_disc_key.fill(0);
     dvdcss->i_method = dvdcss_method::title;
     break;
 
   default:
 
     print_debug(dvdcss, "disc key does not need to be decrypted");
-    memset(p_disc_key, 0, DVD_KEY_SIZE);
+    p_disc_key.fill(0);
     break;
   }
 
-  memcpy(dvdcss->css.p_disc_key, p_disc_key, DVD_KEY_SIZE);
+  dvdcss->css.p_disc_key = p_disc_key;
 
   return 0;
 }
@@ -389,9 +387,10 @@ extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
 /*****************************************************************************
  * dvdcss_titlekey: get title key.
  *****************************************************************************/
-static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
+static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
+                           dvdcss_key &p_title_key) {
   static uint8_t p_garbage[DVDCSS_BLOCK_SIZE]; /* we never read it back */
-  uint8_t p_key[DVD_KEY_SIZE];
+  dvdcss_key p_key = {};
   int i, i_ret = 0;
 
   if (dvdcss->b_ioctls && (dvdcss->i_method == dvdcss_method::key ||
@@ -408,8 +407,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
     }
 
     /* Get encrypted title key */
-    if (ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos, p_key) <
-        0) {
+    if (ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos,
+                           p_key.data()) < 0) {
       print_debug(dvdcss, "ioctl ReadTitleKey failed (region mismatch?)");
       i_ret = -1;
     }
@@ -421,7 +420,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
       print_debug(
           dvdcss,
           "lost authentication success flag (ASF), requesting title key");
-      ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+      (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
       i_ret = -1;
       break;
 
@@ -439,7 +438,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
        * we might still have the AGID.  Other code assumes that we
        * will not after this so invalidate it(?). */
       if (i_ret < 0) {
-        ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+        (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
       }
       break;
     }
@@ -452,18 +451,18 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
 
       /* If p_key is all zero then there really wasn't any key present
        * even though we got to read it without an error. */
-      if (!(p_key[0] | p_key[1] | p_key[2] | p_key[3] | p_key[4])) {
+      if (p_key == dvdcss_key{}) {
         i_ret = 0;
       } else {
-        PrintKey(dvdcss, "initial disc key ", dvdcss->css.p_disc_key);
+        PrintKey(dvdcss, "initial disc key ", dvdcss->css.p_disc_key.data());
         DecryptTitleKey(dvdcss->css.p_disc_key, p_key);
-        PrintKey(dvdcss, "decrypted title key ", p_key);
+        PrintKey(dvdcss, "decrypted title key ", p_key.data());
         i_ret = 1;
       }
 
       /* All went well either there wasn't a key or we have it now. */
-      memcpy(p_title_key, p_key, DVD_KEY_SIZE);
-      PrintKey(dvdcss, "title key is ", p_title_key);
+      p_title_key = p_key;
+      PrintKey(dvdcss, "title key is ", p_title_key.data());
 
       return i_ret;
     }
@@ -475,7 +474,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
     dvdcss->pf_seek(dvdcss, 0);
     dvdcss->pf_read(dvdcss, p_garbage, 1);
     dvdcss->pf_seek(dvdcss, 0);
-    dvdcss_disckey(dvdcss);
+    (void)dvdcss_disckey(dvdcss);
 
     /* Fallback */
   }
@@ -486,8 +485,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
   /* For now, the read limit is 9GB / 2048 =  4718592 sectors. */
   i_ret = CrackTitleKey(dvdcss, i_pos, 4718592, p_key);
 
-  memcpy(p_title_key, p_key, DVD_KEY_SIZE);
-  PrintKey(dvdcss, "title key is ", p_title_key);
+  p_title_key = p_key;
+  PrintKey(dvdcss, "title key is ", p_title_key.data());
 
   return i_ret;
 }
@@ -498,7 +497,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos, dvd_key p_title_key) {
  * sec: sector to unscramble
  * key: title key for this sector
  *****************************************************************************/
-extern "C" int dvdcss_unscramble(dvd_key p_key, uint8_t *p_sec) {
+extern "C" int dvdcss_unscramble(const dvdcss_key &p_key, uint8_t *p_sec) {
   unsigned int i_t1, i_t2, i_t3, i_t4, i_t5, i_t6;
   uint8_t *p_end = p_sec + DVDCSS_BLOCK_SIZE;
 
@@ -549,9 +548,9 @@ extern "C" int dvdcss_unscramble(dvd_key p_key, uint8_t *p_sec) {
 extern "C" int GetBusKey(dvdcss_t dvdcss) {
   uint8_t p_buffer[10];
   uint8_t p_challenge[2 * DVD_KEY_SIZE];
-  dvd_key p_key1;
-  dvd_key p_key2;
-  dvd_key p_key_check;
+  dvdcss_key p_key1 = {};
+  dvdcss_key p_key2 = {};
+  dvdcss_key p_key_check = {};
   uint8_t i_variant = 0;
   int i_ret = -1;
   int i;
@@ -573,7 +572,7 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
      * Invalidating an AGID could make another process fail somewhere
      * in its authentication process. */
     dvdcss->css.i_agid = i;
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
 
     print_debug(dvdcss, "requesting authentication grant ID (AGID)");
     i_ret = ioctl_ReportAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
@@ -598,14 +597,14 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
   /* Send challenge to LU */
   if (ioctl_SendChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl SendChallenge failed");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
   /* Get key1 from LU */
   if (ioctl_ReportKey1(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl ReportKey1 failed");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
@@ -615,9 +614,9 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
   }
 
   for (i = 0; i < 32; ++i) {
-    CryptKey(0, i, p_challenge, p_key_check);
+    CryptKey(0, i, p_challenge, p_key_check.data());
 
-    if (memcmp(p_key_check, p_key1, DVD_KEY_SIZE) == 0) {
+    if (p_key_check == p_key1) {
       print_debug(dvdcss, "drive authenticated, using variant %d", i);
       i_variant = i;
       break;
@@ -626,14 +625,14 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
 
   if (i == 32) {
     print_error(dvdcss, "drive would not authenticate");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
   /* Get challenge from LU */
   if (ioctl_ReportChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl ReportKeyChallenge failed");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
@@ -642,7 +641,7 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
     p_challenge[i] = p_buffer[9 - i];
   }
 
-  CryptKey(1, i_variant, p_challenge, p_key2);
+  CryptKey(1, i_variant, p_challenge, p_key2.data());
 
   /* Get key2 from host */
   for (i = 0; i < DVD_KEY_SIZE; ++i) {
@@ -652,17 +651,17 @@ extern "C" int GetBusKey(dvdcss_t dvdcss) {
   /* Send key2 to LU */
   if (ioctl_SendKey2(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
     print_error(dvdcss, "ioctl SendKey2 failed");
-    ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
+    (void)ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid);
     return -1;
   }
 
   /* The drive has accepted us as authentic. */
   print_debug(dvdcss, "authentication established");
 
-  memcpy(p_challenge, p_key1, DVD_KEY_SIZE);
-  memcpy(p_challenge + DVD_KEY_SIZE, p_key2, DVD_KEY_SIZE);
+  memcpy(p_challenge, p_key1.data(), DVD_KEY_SIZE);
+  memcpy(p_challenge + DVD_KEY_SIZE, p_key2.data(), DVD_KEY_SIZE);
 
-  CryptKey(2, i_variant, p_challenge, dvdcss->css.p_bus_key);
+  CryptKey(2, i_variant, p_challenge, dvdcss->css.p_bus_key.data());
 
   return 0;
 }
@@ -960,7 +959,7 @@ static void DecryptKey(uint8_t invert, const uint8_t *p_key,
  * cracker. A copy of his article can be found here:
  * http://www-2.cs.cmu.edu/~dst/DeCSS/FrankStevenson/mail2.txt
  *****************************************************************************/
-static const dvd_key player_keys[] = {
+static const dvdcss_key player_keys[] = {
     {0x01, 0xaf, 0xe3, 0x12, 0x80}, {0x12, 0x11, 0xca, 0x04, 0x3b},
     {0x14, 0x0c, 0x9e, 0xd0, 0x09}, {0x14, 0x71, 0x35, 0xba, 0xe2},
     {0x1a, 0xa4, 0x33, 0x21, 0xa6}, {0x26, 0xec, 0xc4, 0xa7, 0x4e},
@@ -987,25 +986,26 @@ static const dvd_key player_keys[] = {
  * p_disc_key: result, the 5 byte disc key
  *****************************************************************************/
 static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
-                          dvd_key p_disc_key) {
-  uint8_t p_verify[DVD_KEY_SIZE];
+                          dvdcss_key &p_disc_key) {
+  dvdcss_key p_verify = {};
   unsigned int i, n = 0;
 
   /* Decrypt disc key with the above player keys */
   for (n = 0; n < sizeof(player_keys) / sizeof(*player_keys); n++) {
-    PrintKey(dvdcss, "trying player key ", player_keys[n]);
+    PrintKey(dvdcss, "trying player key ", player_keys[n].data());
 
     for (i = 1; i < 409; i++) {
       /* Check if player key n is the right key for position i. */
-      DecryptKey(0, player_keys[n], p_struct_disckey + 5 * i, p_disc_key);
+      DecryptKey(0, player_keys[n].data(), p_struct_disckey + 5 * i,
+                 p_disc_key.data());
 
       /* The first part in the struct_disckey block is the
        * 'disc key' encrypted with itself.  Using this we
        * can check if we decrypted the correct key. */
-      DecryptKey(0, p_disc_key, p_struct_disckey, p_verify);
+      DecryptKey(0, p_disc_key.data(), p_struct_disckey, p_verify.data());
 
       /* If the position / player key pair worked then return. */
-      if (memcmp(p_disc_key, p_verify, DVD_KEY_SIZE) == 0) {
+      if (p_disc_key == p_verify) {
         return 0;
       }
     }
@@ -1013,7 +1013,7 @@ static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
 
   /* Have tried all combinations of positions and keys,
    * and we still didn't succeed. */
-  memset(p_disc_key, 0, DVD_KEY_SIZE);
+  p_disc_key.fill(0);
   return -1;
 }
 
@@ -1024,8 +1024,9 @@ static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
  * p_disc_key: result, the 5 byte disc key
  * p_titlekey: the encrypted title key, gets overwritten by the decrypted key
  *****************************************************************************/
-static void DecryptTitleKey(dvd_key p_disc_key, dvd_key p_titlekey) {
-  DecryptKey(0xff, p_disc_key, p_titlekey, p_titlekey);
+static void DecryptTitleKey(const dvdcss_key &p_disc_key,
+                            dvdcss_key &p_titlekey) {
+  DecryptKey(0xff, p_disc_key.data(), p_titlekey.data(), p_titlekey.data());
 }
 
 /*****************************************************************************
@@ -1362,7 +1363,7 @@ static int i_tries = 0, i_success = 0;
  * i_pos is the starting sector, i_len is the maximum number of sectors to read
  *****************************************************************************/
 static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
-                         dvd_key p_titlekey) {
+                         dvdcss_key &p_titlekey) {
   uint8_t p_buf[DVDCSS_BLOCK_SIZE];
   const uint8_t p_packstart[4] = {0x00, 0x00, 0x01, 0xba};
   int i_reads = 0;
@@ -1426,7 +1427,7 @@ static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
         !(p_buf[0x11] == 0xbb || p_buf[0x11] == 0xbe || p_buf[0x11] == 0xbf)) {
       i_encrypted++;
 
-      if (AttackPattern(p_buf, p_titlekey) > 0) {
+      if (AttackPattern(p_buf, p_titlekey.data()) > 0) {
         b_stop_scanning = 1;
       }
 #if 0
@@ -1466,12 +1467,12 @@ static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
   }
 
   if (i_encrypted == 0 && i_reads > 0) {
-    memset(p_titlekey, 0, DVD_KEY_SIZE);
+    p_titlekey.fill(0);
     print_debug(dvdcss, "no scrambled sectors found");
     return 0;
   }
 
-  memset(p_titlekey, 0, DVD_KEY_SIZE);
+  p_titlekey.fill(0);
   return -1;
 }
 

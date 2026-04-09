@@ -60,8 +60,8 @@ typedef cpxm_s *p_cpxm;
 #ifdef __cplusplus
 extern "C" {
 #endif
-int cppm_set_id_album(dvdcss_t dvdcss);
-int cprm_set_id_media(dvdcss_t dvdcss);
+[[nodiscard]] int cppm_set_id_album(dvdcss_t dvdcss);
+[[nodiscard]] int cprm_set_id_media(dvdcss_t dvdcss);
 #ifdef __cplusplus
 }
 #endif

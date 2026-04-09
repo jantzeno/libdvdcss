@@ -29,6 +29,10 @@
 #ifndef DVDCSS_CSS_H
 #define DVDCSS_CSS_H
 
+#ifdef __cplusplus
+#include <array>
+#endif
+
 #include <stdint.h>
 
 #include "dvdcss/dvdcss.h"
@@ -37,19 +41,22 @@
 
 #define DVD_KEY_SIZE 5
 
-typedef uint8_t dvd_key[DVD_KEY_SIZE];
+#ifdef __cplusplus
+using dvdcss_key = std::array<uint8_t, DVD_KEY_SIZE>;
+#else
+typedef uint8_t dvdcss_key[DVD_KEY_SIZE];
+#endif
 
 typedef struct dvd_title {
   int i_startlb;
-  dvd_key p_key;
-  struct dvd_title *p_next;
+  dvdcss_key p_key;
 } dvd_title;
 
 typedef struct css {
-  int i_agid;          /* Current Authentication Grant ID. */
-  dvd_key p_bus_key;   /* Current session key. */
-  dvd_key p_disc_key;  /* This DVD disc's key. */
-  dvd_key p_title_key; /* Current title key. */
+  int i_agid;             /* Current Authentication Grant ID. */
+  dvdcss_key p_bus_key;   /* Current session key. */
+  dvdcss_key p_disc_key;  /* This DVD disc's key. */
+  dvdcss_key p_title_key; /* Current title key. */
 } css;
 
 /*****************************************************************************
@@ -57,16 +64,14 @@ typedef struct css {
  *****************************************************************************/
 #ifdef __cplusplus
 extern "C" {
-#endif
-int dvdcss_test(dvdcss_t);
-int dvdcss_title(dvdcss_t, int);
-int dvdcss_disckey(dvdcss_t);
-int dvdcss_unscramble(dvd_key, uint8_t *);
+[[nodiscard]] int dvdcss_test(dvdcss_t);
+[[nodiscard]] int dvdcss_title(dvdcss_t, int);
+[[nodiscard]] int dvdcss_disckey(dvdcss_t);
+int dvdcss_unscramble(const dvdcss_key &, uint8_t *);
 
 /* exported for USB authentification in CPXM */
-int GetBusKey(dvdcss_t);
-int GetASF(dvdcss_t);
-#ifdef __cplusplus
+[[nodiscard]] int GetBusKey(dvdcss_t);
+[[nodiscard]] int GetASF(dvdcss_t);
 }
 #endif
 

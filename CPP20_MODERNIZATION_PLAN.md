@@ -13,7 +13,7 @@
 
 ### Attributes & annotations
 
-- [ ] Add `[[nodiscard]]` to all internal functions returning error codes (`dvdcss_test`, `dvdcss_title`, `dvdcss_disckey`, `GetBusKey`, `GetASF`, ioctl helpers)
+- [x] Add `[[nodiscard]]` to all internal functions returning error codes (`dvdcss_test`, `dvdcss_title`, `dvdcss_disckey`, `GetBusKey`, `GetASF`, ioctl helpers)
 - [ ] Add `[[likely]]`/`[[unlikely]]` on hot-path branches in CSS/CPXM crypto loops
 - [ ] Add `noexcept` to functions that never throw (error.cpp formatters, lookup-table helpers, byte-swap utilities)
 
@@ -50,8 +50,8 @@
 ### Title key cache (`src/css.h` / `src/css.cpp`)
 
 - [x] Replace `dvd_title` intrusive linked list with `std::vector<dvd_title>`
-- [ ] Replace `dvd_key` raw `uint8_t[5]` typedef with `std::array<uint8_t, 5>`
-- [ ] Replace `dvd_key` members in `struct css` with `std::array<uint8_t, DVD_KEY_SIZE>`
+- [x] Replace `dvd_key` raw `uint8_t[5]` typedef with `std::array<uint8_t, 5>`
+- [x] Replace `dvd_key` members in `struct css` with `std::array<uint8_t, DVD_KEY_SIZE>`
 
 ### CPXM cache (`src/libdvdcpxm.cpp`)
 
@@ -110,6 +110,6 @@
 - [ ] Remove C-only compatibility shims (`MALLOC_CAST`, etc.) if any survive
 - [ ] Audit all `#include` directives: replace C headers (`<string.h>`, `<stdlib.h>`, `<stdio.h>`) with C++ equivalents (`<cstring>`, `<cstdlib>`, `<cstdio>`) in implementation files
 - [ ] Run AddressSanitizer + UBSan on test/example binaries to validate no regressions
-- [ ] Build and verify a standalone C consumer against the installed public headers (the `extern "C"` ABI contract)
+- [x] Build and verify a standalone C consumer against the installed public headers (the `extern "C"` ABI contract)
 - [x] Cross-compile check with MinGW-w64 (`x86_64-w64-mingw32-g++`)
 - [ ] Profile CSS key-cracking hot path to verify no performance regression from container changes

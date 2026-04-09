@@ -540,7 +540,7 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
     }
   }
 
-  memset(dvdcss->css.p_disc_key, 0, DVD_KEY_SIZE);
+  dvdcss->css.p_disc_key.fill(0);
   /* If disc is CSS protected and the ioctls work, authenticate the drive */
   if (dvdcss->b_scrambled && dvdcss->b_ioctls) {
     i_ret = dvdcss_disckey(dvdcss);
@@ -646,7 +646,7 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
     return i_ret;
   }
 
-  if (!memcmp(dvdcss->css.p_title_key, "\0\0\0\0\0", 5)) {
+  if (dvdcss->css.p_title_key == dvdcss_key{}) {
     /* For what we believe is an unencrypted title,
      * check that there are no encrypted blocks */
     for (i_index = i_ret; i_index; i_index--) {
