@@ -1,4 +1,4 @@
-/* libdvdcss.c: DVD reading library.
+/* libdvdcss.cpp: DVD reading library.
  *
  * Authors: Stéphane Borel <stef@via.ecp.fr>
  *          Sam Hocevar <sam@zoy.org>
@@ -130,7 +130,7 @@
 #include "ioctl.h"
 #include "libdvdcss.h"
 
-#ifdef HAVE_BROKEN_MKDIR
+#if defined(HAVE_BROKEN_MKDIR) || defined(_WIN32)
 #include <direct.h>
 #define mkdir(a, b) _mkdir(a)
 #endif
@@ -454,7 +454,7 @@ static void init_cache(dvdcss_t dvdcss) {
  * calls. \e libdvdcss checks whether ioctls can be performed on the disc,
  * and when possible, the disc key is retrieved.
  */
-LIBDVDCSS_EXPORT dvdcss_t dvdcss_open(const char *psz_target) {
+extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
   return dvdcss_open_common(psz_target, NULL, NULL);
 }
 
@@ -467,8 +467,8 @@ LIBDVDCSS_EXPORT dvdcss_t dvdcss_open(const char *psz_target) {
  *
  * \see dvdcss_open()
  */
-LIBDVDCSS_EXPORT dvdcss_t dvdcss_open_stream(void *p_stream,
-                                             dvdcss_stream_cb *p_stream_cb) {
+extern "C" dvdcss_t dvdcss_open_stream(void *p_stream,
+                                       dvdcss_stream_cb *p_stream_cb) {
   return dvdcss_open_common(NULL, p_stream, p_stream_cb);
 }
 
@@ -570,7 +570,7 @@ error:
  * Return a string with the last error message produced by \e libdvdcss.
  * Useful to conveniently format error messages in external applications.
  */
-LIBDVDCSS_EXPORT const char *dvdcss_error(const dvdcss_t dvdcss) {
+extern "C" const char *dvdcss_error(const dvdcss_t dvdcss) {
   return dvdcss->psz_error;
 }
 
@@ -597,7 +597,7 @@ LIBDVDCSS_EXPORT const char *dvdcss_error(const dvdcss_t dvdcss) {
  * even with the "title" method. This flag is typically used when seeking
  * in a new title.
  */
-LIBDVDCSS_EXPORT int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
+extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
   /* title cracking method is too slow to be used at each seek */
   if (((i_flags & DVDCSS_SEEK_MPEG) &&
        (dvdcss->i_method != DVDCSS_METHOD_TITLE)) ||
@@ -634,8 +634,8 @@ LIBDVDCSS_EXPORT int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
  * \warning dvdcss_read() expects to be able to write \p i_blocks *
  *          #DVDCSS_BLOCK_SIZE bytes into \p p_buffer.
  */
-LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
-                                 int i_flags) {
+extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
+                           int i_flags) {
   uint8_t *_p_buffer = (uint8_t *)p_buffer;
   int i_ret, i_index;
 
@@ -697,8 +697,8 @@ LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
  *          Moreover, all iov_len members of the iovec structures should be
  *          multiples of #DVDCSS_BLOCK_SIZE.
  */
-LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
-                                  int i_flags) {
+extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
+                            int i_flags) {
   struct iovec *_p_iovec = (struct iovec *)p_iovec;
   int i_ret, i_index;
   void *iov_base;
@@ -727,7 +727,7 @@ LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
       iov_len = _p_iovec->iov_len;
     }
 
-    dvdcss_unscramble(dvdcss->css.p_title_key, iov_base);
+    dvdcss_unscramble(dvdcss->css.p_title_key, (uint8_t *)iov_base);
     ((uint8_t *)iov_base)[0x14] &= 0x8f;
 
     iov_base = (uint8_t *)iov_base + DVDCSS_BLOCK_SIZE;
@@ -746,7 +746,7 @@ LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
  * Close the DVD device and free all the memory allocated by \e libdvdcss.
  * On return, the #dvdcss_t is invalidated and may not be used again.
  */
-LIBDVDCSS_EXPORT int dvdcss_close(dvdcss_t dvdcss) {
+extern "C" int dvdcss_close(dvdcss_t dvdcss) {
   struct dvd_title *p_title;
   int i_ret;
 
@@ -776,7 +776,7 @@ LIBDVDCSS_EXPORT int dvdcss_close(dvdcss_t dvdcss) {
  * \param dvdcss a \e libdvdcss instance.
  * \return 1 if the DVD is scrambled, 0 otherwise.
  */
-LIBDVDCSS_EXPORT int dvdcss_is_scrambled(dvdcss_t dvdcss) {
+extern "C" int dvdcss_is_scrambled(dvdcss_t dvdcss) {
   return dvdcss->b_scrambled;
 }
 
@@ -785,6 +785,6 @@ LIBDVDCSS_EXPORT int dvdcss_is_scrambled(dvdcss_t dvdcss) {
  *
  * \return 0 if the disc is unencrypted, 1 if cppm or css, 2 if cprm
  */
-LIBDVDCSS_EXPORT int dvdcss_get_encryption_type(dvdcss_t dvdcss) {
+extern "C" int dvdcss_get_encryption_type(dvdcss_t dvdcss) {
   return dvdcss->media_type;
 }

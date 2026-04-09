@@ -436,12 +436,20 @@ It owns process environment parsing, cache-path logic, device opening, and the p
 
 Focus:
 
-- [ ] Public entry points must preserve C linkage and signatures.
-- [ ] Memory allocation, ownership, and cleanup should stay behaviorally identical before any RAII refactor.
-- [ ] Environment variable and filesystem logic must remain portable.
+- [x] Public entry points must preserve C linkage and signatures.
+- [x] Memory allocation, ownership, and cleanup should stay behaviorally identical before any RAII refactor.
+- [x] Environment variable and filesystem logic must remain portable.
 
 Recommended rule for this file:
 Do not redesign internals during the conversion rename. First make it compile as C++ with minimal changes, then consider cleanup in a later pass.
+
+Validation note:
+
+- [x] The implementation now lives in `src/libdvdcss.cpp`; the source compiled as C++17 after one explicit cast fix in `dvdcss_readv()` where the descrambler now receives a `uint8_t *` instead of relying on a C-only `void *` conversion.
+- [x] All exported public entry points in the renamed C++ unit now keep explicit C linkage, including `dvdcss_open()`, `dvdcss_open_stream()`, `dvdcss_error()`, `dvdcss_seek()`, `dvdcss_read()`, `dvdcss_readv()`, `dvdcss_close()`, `dvdcss_is_scrambled()`, and `dvdcss_get_encryption_type()`, so the installed public API continues to match the C-facing declarations in `src/dvdcss/dvdcss.h`.
+- [x] The existing allocation, cache, and cleanup model was preserved unchanged during the rename: the library state still allocates through the current raw `malloc` path, cache setup still uses the same directory and tag-file flow, cleanup still frees the same structures in the same order, and no RAII or ownership redesign was introduced in this step.
+- [x] Environment-variable and filesystem logic remained portable after the rename, with one Windows-specific portability adjustment: the `_mkdir` compatibility path in `src/libdvdcss.cpp` now activates under `_WIN32` as well as `HAVE_BROKEN_MKDIR`, which keeps the MinGW C++ path aligned with the existing Windows behavior.
+- [x] Meson was reconfigured for both build directories, `meson compile -C builddir` and `meson compile -C builddir-tests-mixed` both succeeded after the rename, the examples-enabled build settled cleanly with `ninja: no work to do`, a tiny external-style C consumer still compiled cleanly against the public headers, and a wrapped MinGW-w64 C++ syntax check passed for the renamed top-level unit after stripping Unix-only generated config branches and forcing the fallback `iovec` path.
 
 ### 7. Tests And Example Programs
 
@@ -481,7 +489,7 @@ Use one focused change per step.
 - [x] `css.c` plus `csstables.h` cleanup.
 - [x] `device.c` conversion.
 - [x] `ioctl.c` conversion.
-- [ ] `libdvdcss.c` conversion.
+- [x] `libdvdcss.c` conversion.
 - [ ] `csstest.c` conversion.
 - [ ] `dvd_region.c` conversion and possible test refactor.
 - [ ] Final cleanup: remove leftover C-only build settings and switch the project fully to C++ if no `.c` sources remain.
