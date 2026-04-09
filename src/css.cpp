@@ -1,10 +1,5 @@
 /*****************************************************************************
  * css.cpp: Functions for DVD authentication and descrambling
- *****************************************************************************
- * Copyright (C) 1999-2008 VideoLAN
- *
- * Authors: Stéphane Borel <stef@via.ecp.fr>
- *          Håkan Hjort <d95hjort@dtek.chalmers.se>
  *
  * based on:
  *  - css-auth by Derek Fawcus <derek@spider.com>
@@ -30,9 +25,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *****************************************************************************/
 
-/*****************************************************************************
- * Preamble
- *****************************************************************************/
 #include "config.h"
 
 #include <algorithm>
@@ -41,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <span>
 #include <sys/types.h>
 #include <vector>
 #ifdef HAVE_SYS_PARAM_H
@@ -72,20 +65,22 @@ inline constexpr int kPszKeySize = DVD_KEY_SIZE * 3;
 /*****************************************************************************
  * Local prototypes
  *****************************************************************************/
-static void PrintKey(dvdcss_t, const char *, const uint8_t *);
+static void PrintKey(dvdcss_t, const char *, std::span<const uint8_t>);
 
-static void CryptKey(int, int, const uint8_t *, uint8_t *);
-static void DecryptKey(uint8_t, const uint8_t *, const uint8_t *, uint8_t *);
+static void CryptKey(int, int, std::span<const uint8_t>, std::span<uint8_t>);
+static void DecryptKey(uint8_t, std::span<const uint8_t>,
+                       std::span<const uint8_t>, std::span<uint8_t>);
 
-static int DecryptDiscKey(dvdcss_t, const uint8_t *, dvdcss_key &);
-static int CrackDiscKey(uint8_t *);
+static int DecryptDiscKey(dvdcss_t, std::span<const uint8_t>, dvdcss_key &);
+static int CrackDiscKey(std::span<uint8_t>);
 
 static void DecryptTitleKey(const dvdcss_key &, dvdcss_key &);
-static int RecoverTitleKey(int, const uint8_t *, const uint8_t *,
-                           const uint8_t *, uint8_t *);
+static int RecoverTitleKey(int, std::span<const uint8_t>,
+                           std::span<const uint8_t>, std::span<const uint8_t>,
+                           std::span<uint8_t>);
 static int CrackTitleKey(dvdcss_t, int, int, dvdcss_key &);
 
-static int AttackPattern(const uint8_t p_sec[DVDCSS_BLOCK_SIZE], uint8_t *);
+static int AttackPattern(std::span<const uint8_t>, std::span<uint8_t>);
 #if 0
 static int  AttackPadding   ( const uint8_t[] );
 #endif
@@ -207,8 +202,8 @@ int dvdcss_test(dvdcss_t dvdcss) {
 /*****************************************************************************
  * dvdcss_title: crack or decrypt the current title key if needed
  *****************************************************************************
- * This function should only be called by dvdcss->pf_seek and should eventually
- * not be external if possible.
+ * This function should only be called by the device strategy seek handler and
+ * should eventually not be external if possible.
  *****************************************************************************/
 int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   dvdcss_key p_title_key = {};
@@ -249,7 +244,7 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
         p_title_key = {static_cast<uint8_t>(k0), static_cast<uint8_t>(k1),
                        static_cast<uint8_t>(k2), static_cast<uint8_t>(k3),
                        static_cast<uint8_t>(k4)};
-        PrintKey(dvdcss, "title key found in cache ", p_title_key.data());
+        PrintKey(dvdcss, "title key found in cache ", std::span{p_title_key});
 
         /* Don't try to save it again */
         b_cache = 0;
@@ -325,7 +320,8 @@ int dvdcss_disckey(dvdcss_t dvdcss) {
   }
 
   /* Get encrypted disc key */
-  if (ioctl_ReadDiscKey(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_ReadDiscKey(dvdcss->i_fd, &dvdcss->css.i_agid,
+                        std::span{p_buffer}) < 0) {
     print_error(dvdcss, "ioctl ReadDiscKey failed");
     return -1;
   }
@@ -349,9 +345,9 @@ int dvdcss_disckey(dvdcss_t dvdcss) {
   case dvdcss_method::key:
 
     /* Decrypt disc key with player key. */
-    PrintKey(dvdcss, "decrypting disc key ", p_buffer);
-    if (!DecryptDiscKey(dvdcss, p_buffer, p_disc_key)) {
-      PrintKey(dvdcss, "decrypted disc key is ", p_disc_key.data());
+    PrintKey(dvdcss, "decrypting disc key ", std::span{p_buffer});
+    if (!DecryptDiscKey(dvdcss, std::span{p_buffer}, p_disc_key)) {
+      PrintKey(dvdcss, "decrypted disc key is ", std::span{p_disc_key});
       break;
     }
     print_debug(dvdcss, "failed to decrypt the disc key, "
@@ -367,9 +363,9 @@ int dvdcss_disckey(dvdcss_t dvdcss) {
 
     /* Crack Disc key to be able to use it */
     std::copy_n(p_buffer, DVD_KEY_SIZE, p_disc_key.begin());
-    PrintKey(dvdcss, "cracking disc key ", p_disc_key.data());
-    if (!CrackDiscKey(p_disc_key.data())) {
-      PrintKey(dvdcss, "cracked disc key is ", p_disc_key.data());
+    PrintKey(dvdcss, "cracking disc key ", std::span{p_disc_key});
+    if (!CrackDiscKey(std::span{p_disc_key})) {
+      PrintKey(dvdcss, "cracked disc key is ", std::span{p_disc_key});
       break;
     }
     print_debug(dvdcss, "failed to crack the disc key");
@@ -413,7 +409,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
 
     /* Get encrypted title key */
     if (ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos,
-                           p_key.data()) < 0) {
+                           std::span{p_key}) < 0) {
       print_debug(dvdcss, "ioctl ReadTitleKey failed (region mismatch?)");
       i_ret = -1;
     }
@@ -461,15 +457,16 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
       if (p_key == dvdcss_key{}) {
         i_ret = 0;
       } else {
-        PrintKey(dvdcss, "initial disc key ", dvdcss->css.p_disc_key.data());
+        PrintKey(dvdcss, "initial disc key ",
+                 std::span{dvdcss->css.p_disc_key});
         DecryptTitleKey(dvdcss->css.p_disc_key, p_key);
-        PrintKey(dvdcss, "decrypted title key ", p_key.data());
+        PrintKey(dvdcss, "decrypted title key ", std::span{p_key});
         i_ret = 1;
       }
 
       /* All went well either there wasn't a key or we have it now. */
       p_title_key = p_key;
-      PrintKey(dvdcss, "title key is ", p_title_key.data());
+      PrintKey(dvdcss, "title key is ", std::span{p_title_key});
 
       return i_ret;
     }
@@ -478,9 +475,9 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
     print_debug(dvdcss, "resetting drive and cracking title key");
 
     /* Read an unscrambled sector and reset the drive */
-    dvdcss->pf_seek(dvdcss, 0);
-    dvdcss->pf_read(dvdcss, p_garbage, 1);
-    dvdcss->pf_seek(dvdcss, 0);
+    dvdcss->device_strategy.seek(dvdcss, 0);
+    dvdcss->device_strategy.read(dvdcss, p_garbage, 1);
+    dvdcss->device_strategy.seek(dvdcss, 0);
     static_cast<void>(dvdcss_disckey(dvdcss));
 
     /* Fallback */
@@ -493,7 +490,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
   i_ret = CrackTitleKey(dvdcss, i_pos, 4718592, p_key);
 
   p_title_key = p_key;
-  PrintKey(dvdcss, "title key is ", p_title_key.data());
+  PrintKey(dvdcss, "title key is ", std::span{p_title_key});
 
   return i_ret;
 }
@@ -504,8 +501,9 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
  * sec: sector to unscramble
  * key: title key for this sector
  *****************************************************************************/
-int dvdcss_unscramble(const dvdcss_key &p_key, uint8_t *p_sec) {
+int dvdcss_unscramble(const dvdcss_key &p_key, std::span<uint8_t> sector) {
   unsigned int i_t1, i_t2, i_t3, i_t4, i_t5, i_t6;
+  uint8_t *p_sec = sector.data();
   uint8_t *p_end = p_sec + DVDCSS_BLOCK_SIZE;
 
   /* PES_scrambling_control */
@@ -602,14 +600,16 @@ int GetBusKey(dvdcss_t dvdcss) {
   }
 
   /* Send challenge to LU */
-  if (ioctl_SendChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_SendChallenge(dvdcss->i_fd, &dvdcss->css.i_agid,
+                          std::span{p_buffer}) < 0) {
     print_error(dvdcss, "ioctl SendChallenge failed");
     static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
   }
 
   /* Get key1 from LU */
-  if (ioctl_ReportKey1(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_ReportKey1(dvdcss->i_fd, &dvdcss->css.i_agid, std::span{p_buffer}) <
+      0) {
     print_error(dvdcss, "ioctl ReportKey1 failed");
     static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
@@ -621,7 +621,7 @@ int GetBusKey(dvdcss_t dvdcss) {
   }
 
   for (i = 0; i < 32; ++i) {
-    CryptKey(0, i, p_challenge, p_key_check.data());
+    CryptKey(0, i, std::span{p_challenge}, std::span{p_key_check});
 
     if (p_key_check == p_key1) [[unlikely]] {
       print_debug(dvdcss, "drive authenticated, using variant %d", i);
@@ -637,7 +637,8 @@ int GetBusKey(dvdcss_t dvdcss) {
   }
 
   /* Get challenge from LU */
-  if (ioctl_ReportChallenge(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_ReportChallenge(dvdcss->i_fd, &dvdcss->css.i_agid,
+                            std::span{p_buffer}) < 0) {
     print_error(dvdcss, "ioctl ReportKeyChallenge failed");
     static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
@@ -648,7 +649,7 @@ int GetBusKey(dvdcss_t dvdcss) {
     p_challenge[i] = p_buffer[9 - i];
   }
 
-  CryptKey(1, i_variant, p_challenge, p_key2.data());
+  CryptKey(1, i_variant, std::span{p_challenge}, std::span{p_key2});
 
   /* Get key2 from host */
   for (i = 0; i < DVD_KEY_SIZE; ++i) {
@@ -656,7 +657,8 @@ int GetBusKey(dvdcss_t dvdcss) {
   }
 
   /* Send key2 to LU */
-  if (ioctl_SendKey2(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_SendKey2(dvdcss->i_fd, &dvdcss->css.i_agid,
+                     std::span{p_buffer}.first(DVD_KEY_SIZE)) < 0) {
     print_error(dvdcss, "ioctl SendKey2 failed");
     static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
     return -1;
@@ -668,7 +670,8 @@ int GetBusKey(dvdcss_t dvdcss) {
   memcpy(p_challenge, p_key1.data(), DVD_KEY_SIZE);
   memcpy(p_challenge + DVD_KEY_SIZE, p_key2.data(), DVD_KEY_SIZE);
 
-  CryptKey(2, i_variant, p_challenge, dvdcss->css.p_bus_key.data());
+  CryptKey(2, i_variant, std::span{p_challenge},
+           std::span{dvdcss->css.p_bus_key});
 
   return 0;
 }
@@ -676,7 +679,8 @@ int GetBusKey(dvdcss_t dvdcss) {
 /*****************************************************************************
  * PrintKey: debug function that dumps a key value
  *****************************************************************************/
-static void PrintKey(dvdcss_t dvdcss, const char *prefix, const uint8_t *data) {
+static void PrintKey(dvdcss_t dvdcss, const char *prefix,
+                     std::span<const uint8_t> data) {
   print_debug(dvdcss, "%s%02x:%02x:%02x:%02x:%02x", prefix, data[0], data[1],
               data[2], data[3], data[4]);
 }
@@ -714,8 +718,9 @@ int GetASF(dvdcss_t dvdcss) {
  * i_key_type: 0->key1, 1->key2, 2->buskey.
  * i_variant: between 0 and 31.
  *****************************************************************************/
-static void CryptKey(int i_key_type, int i_variant, const uint8_t *p_challenge,
-                     uint8_t *p_key) {
+static void CryptKey(int i_key_type, int i_variant,
+                     std::span<const uint8_t> p_challenge,
+                     std::span<uint8_t> p_key) {
   /* Permutation table for challenge */
   static const uint8_t pp_perm_challenge[3][10] = {
       {1, 3, 0, 7, 5, 2, 9, 6, 4, 8},
@@ -907,8 +912,9 @@ static void CryptKey(int i_key_type, int i_variant, const uint8_t *p_challenge,
  *  -for disc key, invert is 0x00,
  *  -for title key, invert if 0xff.
  *****************************************************************************/
-static void DecryptKey(uint8_t invert, const uint8_t *p_key,
-                       const uint8_t *p_crypted, uint8_t *p_result) {
+static void DecryptKey(uint8_t invert, std::span<const uint8_t> p_key,
+                       std::span<const uint8_t> p_crypted,
+                       std::span<uint8_t> p_result) {
   unsigned int i_lfsr1_lo;
   unsigned int i_lfsr1_hi;
   unsigned int i_lfsr0;
@@ -992,24 +998,27 @@ static const dvdcss_key player_keys[] = {
  * p_struct_disckey: the 2048 byte DVD_STRUCT_DISCKEY data
  * p_disc_key: result, the 5 byte disc key
  *****************************************************************************/
-static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
+static int DecryptDiscKey(dvdcss_t dvdcss,
+                          std::span<const uint8_t> p_struct_disckey,
                           dvdcss_key &p_disc_key) {
   dvdcss_key p_verify = {};
   unsigned int i, n = 0;
 
   /* Decrypt disc key with the above player keys */
   for (n = 0; n < sizeof(player_keys) / sizeof(*player_keys); n++) {
-    PrintKey(dvdcss, "trying player key ", player_keys[n].data());
+    PrintKey(dvdcss, "trying player key ", std::span{player_keys[n]});
 
     for (i = 1; i < 409; i++) {
       /* Check if player key n is the right key for position i. */
-      DecryptKey(0, player_keys[n].data(), p_struct_disckey + 5 * i,
-                 p_disc_key.data());
+      DecryptKey(0, std::span{player_keys[n]},
+                 p_struct_disckey.subspan(5 * i, DVD_KEY_SIZE),
+                 std::span{p_disc_key});
 
       /* The first part in the struct_disckey block is the
        * 'disc key' encrypted with itself.  Using this we
        * can check if we decrypted the correct key. */
-      DecryptKey(0, p_disc_key.data(), p_struct_disckey, p_verify.data());
+      DecryptKey(0, std::span{p_disc_key}, p_struct_disckey.first(DVD_KEY_SIZE),
+                 std::span{p_verify});
 
       /* If the position / player key pair worked then return. */
       if (p_disc_key == p_verify) [[unlikely]] {
@@ -1033,7 +1042,8 @@ static int DecryptDiscKey(dvdcss_t dvdcss, const uint8_t *p_struct_disckey,
  *****************************************************************************/
 static void DecryptTitleKey(const dvdcss_key &p_disc_key,
                             dvdcss_key &p_titlekey) {
-  DecryptKey(0xff, p_disc_key.data(), p_titlekey.data(), p_titlekey.data());
+  DecryptKey(0xff, std::span{p_disc_key}, std::span{p_titlekey},
+             std::span{p_titlekey});
 }
 
 /*****************************************************************************
@@ -1053,12 +1063,14 @@ inline constexpr int kBigTableSize = 16777216;
 static int investigate(unsigned char *hash, unsigned char *ckey) {
   unsigned char key[DVD_KEY_SIZE];
 
-  DecryptKey(0, ckey, hash, key);
+  DecryptKey(0, std::span<const uint8_t>{ckey, DVD_KEY_SIZE},
+             std::span<const uint8_t>{hash, DVD_KEY_SIZE},
+             std::span<uint8_t>{key, DVD_KEY_SIZE});
 
   return memcmp(key, ckey, DVD_KEY_SIZE);
 }
 
-static int CrackDiscKey(uint8_t *p_disc_key) {
+static int CrackDiscKey(std::span<uint8_t> p_disc_key) {
   unsigned char B[5] = {0, 0, 0, 0, 0}; /* Second Stage of mangle cipher */
   unsigned char C[5] = {0, 0, 0, 0, 0}; /* Output Stage of mangle cipher
                                          * IntermediateKey */
@@ -1190,7 +1202,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         k[2] = p_disc_key[1] ^ p_css_tab1[p_disc_key[2]] ^ B[2];
 
         if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) [[unlikely]] {
-          if (!investigate(&p_disc_key[0], &C[0])) [[unlikely]] {
+          if (!investigate(p_disc_key.data(), &C[0])) [[unlikely]] {
             goto end;
           }
         }
@@ -1212,7 +1224,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
         k[2] = p_disc_key[1] ^ p_css_tab1[p_disc_key[2]] ^ B[2];
 
         if ((B[1] ^ p_css_tab1[B[2]] ^ k[2]) == C[2]) [[unlikely]] {
-          if (!investigate(&p_disc_key[0], &C[0])) [[unlikely]] {
+          if (!investigate(p_disc_key.data(), &C[0])) [[unlikely]] {
             goto end;
           }
         }
@@ -1221,7 +1233,7 @@ static int CrackDiscKey(uint8_t *p_disc_key) {
   }
 
 end:
-  memcpy(p_disc_key, &C[0], DVD_KEY_SIZE);
+  memcpy(p_disc_key.data(), &C[0], DVD_KEY_SIZE);
 
 error:
   return ret;
@@ -1234,9 +1246,10 @@ error:
  * Called from Attack* which are in turn called by CrackTitleKey.  Given
  * a guessed(?) plain text and the cipher text.  Returns -1 on failure.
  *****************************************************************************/
-static int RecoverTitleKey(int i_start, const uint8_t *p_crypted,
-                           const uint8_t *p_decrypted,
-                           const uint8_t *p_sector_seed, uint8_t *p_key) {
+static int RecoverTitleKey(int i_start, std::span<const uint8_t> p_crypted,
+                           std::span<const uint8_t> p_decrypted,
+                           std::span<const uint8_t> p_sector_seed,
+                           std::span<uint8_t> p_key) {
   uint8_t p_buffer[10];
   unsigned int i_t1, i_t2, i_t3, i_t4, i_t5, i_t6;
   unsigned int i_try;
@@ -1377,7 +1390,7 @@ static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
   i_success = 0;
 
   do {
-    i_ret = dvdcss->pf_seek(dvdcss, i_pos);
+    i_ret = dvdcss->device_strategy.seek(dvdcss, i_pos);
 
     if (i_ret != i_pos) {
       print_error(dvdcss, "seek failed");
@@ -1426,7 +1439,7 @@ static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
         !(p_buf[0x11] == 0xbb || p_buf[0x11] == 0xbe || p_buf[0x11] == 0xbf)) {
       i_encrypted++;
 
-      if (AttackPattern(p_buf, p_titlekey.data()) > 0) {
+      if (AttackPattern(std::span{p_buf}, std::span{p_titlekey}) > 0) {
         b_stop_scanning = 1;
       }
 #if 0
@@ -1482,8 +1495,8 @@ static int CrackTitleKey(dvdcss_t dvdcss, int i_pos, int i_len,
  * Then it guesses that the plain text for first encrypted bytes are
  * a continuation of that pattern.
  *****************************************************************************/
-static int AttackPattern(const uint8_t p_sec[DVDCSS_BLOCK_SIZE],
-                         uint8_t *p_key) {
+static int AttackPattern(std::span<const uint8_t> p_sec,
+                         std::span<uint8_t> p_key) {
   unsigned int i_best_plen = 0;
   unsigned int i_best_p = 0;
   unsigned int i, j;
@@ -1508,10 +1521,11 @@ static int AttackPattern(const uint8_t p_sec[DVDCSS_BLOCK_SIZE],
     int res;
 
     i_tries++;
-    memset(p_key, 0, DVD_KEY_SIZE);
-    res = RecoverTitleKey(0, &p_sec[0x80],
-                          &p_sec[0x80 - (i_best_plen / i_best_p) * i_best_p],
-                          &p_sec[0x54] /* key_seed */, p_key);
+    memset(p_key.data(), 0, DVD_KEY_SIZE);
+    res = RecoverTitleKey(
+        0, p_sec.subspan(0x80, 10),
+        p_sec.subspan(0x80 - (i_best_plen / i_best_p) * i_best_p, 10),
+        p_sec.subspan(0x54, DVD_KEY_SIZE) /* key_seed */, p_key);
     i_success += (res >= 0);
     return (res >= 0);
   }

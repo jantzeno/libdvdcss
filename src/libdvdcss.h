@@ -52,15 +52,17 @@ enum class dvdcss_method {
  * The libdvdcss structure
  *****************************************************************************/
 struct dvdcss_s {
+  ~dvdcss_s() noexcept;
+
+  int cleanup() noexcept;
+
   /* File descriptor */
   std::string psz_device;
-  dvdcss_fd_t i_fd;
+  ScopedFd i_fd;
   int i_pos;
 
   /* File handling */
-  int (*pf_seek)(dvdcss_t, int);
-  int (*pf_read)(dvdcss_t, void *, int);
-  int (*pf_readv)(dvdcss_t, const struct iovec *, int);
+  DeviceStrategy device_strategy;
 
   /* Decryption stuff */
   dvdcss_method i_method;
@@ -78,7 +80,7 @@ struct dvdcss_s {
   int b_debug;
 
   /* struct to be used only internally in CPXM */
-  std::shared_ptr<cpxm_s> cpxm;
+  std::unique_ptr<cpxm_s> cpxm;
   /* to check if this was cached, or if it was copied from cache */
   /* will use to check if disc is being closed or if it's just a file */
   int cpxm_was_cached;
@@ -95,6 +97,9 @@ struct dvdcss_s {
 
   void *p_stream;
   dvdcss_stream_cb *p_stream_cb;
+
+  int cleanup_result = 0;
+  bool cleanup_done = false;
 };
 
 /*****************************************************************************

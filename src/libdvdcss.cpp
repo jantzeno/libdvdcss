@@ -104,7 +104,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <format>
+#include <iterator>
 #include <memory>
+#include <span>
 #include <sys/stat.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_PARAM_H
@@ -133,9 +136,9 @@
 #include "libdvdcss.h"
 
 using std::atoi;
+using std::format;
 using std::getenv;
 using std::memcpy;
-using std::sprintf;
 using std::strcmp;
 using std::strlen;
 using std::strncmp;
@@ -152,6 +155,17 @@ inline constexpr int kDiscTitleOffset = 40;
 inline constexpr int kDiscTitleLength = 32;
 inline constexpr int kManufacturingDateOffset = 813;
 inline constexpr int kManufacturingDateLength = 16;
+
+static std::string format_hex_bytes(std::span<const uint8_t> bytes) {
+  std::string result;
+  result.reserve(bytes.size() * 2);
+
+  for (const uint8_t byte : bytes) {
+    std::format_to(std::back_inserter(result), "{:02x}", byte);
+  }
+
+  return result;
+}
 
 static int create_directories_if_needed(const std::filesystem::path &path) {
   std::error_code error;
@@ -170,6 +184,24 @@ static int create_directories_if_needed(const std::filesystem::path &path) {
 
 static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
                                    dvdcss_stream_cb *p_stream_cb);
+
+dvdcss_s::~dvdcss_s() noexcept { static_cast<void>(cleanup()); }
+
+int dvdcss_s::cleanup() noexcept {
+  if (cleanup_done) {
+    return cleanup_result;
+  }
+
+  cleanup_done = true;
+
+  if (cpxm || cpxm_was_cached) {
+    static_cast<void>(dvdcpxm_close_internal(this));
+  }
+
+  cleanup_result = dvdcss_close_device(this);
+  return cleanup_result;
+}
+
 static void set_verbosity(dvdcss_t dvdcss) {
   const char *psz_verbose = getenv("DVDCSS_VERBOSE");
 
@@ -327,8 +359,9 @@ static int init_cache_dir(dvdcss_t dvdcss) {
 
 static void create_cache_subdir(dvdcss_t dvdcss) {
   uint8_t p_sector[DVDCSS_BLOCK_SIZE];
-  char psz_key[kStringKeySize + 1];
   std::string cache_subdir;
+  std::string serial_string;
+  std::string key_string;
   char *psz_title;
   uint8_t *psz_serial;
   int i, i_ret;
@@ -336,12 +369,12 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   /* We read sector 0. If it starts with 0x000001ba (BE), we are
    * reading a VOB file, and we should not cache anything. */
 
-  i_ret = dvdcss->pf_seek(dvdcss, 0);
+  i_ret = dvdcss->device_strategy.seek(dvdcss, 0);
   if (i_ret != 0) {
     goto error;
   }
 
-  i_ret = dvdcss->pf_read(dvdcss, p_sector, 1);
+  i_ret = dvdcss->device_strategy.read(dvdcss, p_sector, 1);
   if (i_ret != 1) {
     goto error;
   }
@@ -355,12 +388,12 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
    *  - offset 40: disc title (32 uppercase chars)
    *  - offset 813: manufacturing date + serial no (16 digits) */
 
-  i_ret = dvdcss->pf_seek(dvdcss, kInterestingSector);
+  i_ret = dvdcss->device_strategy.seek(dvdcss, kInterestingSector);
   if (i_ret != kInterestingSector) {
     goto error;
   }
 
-  i_ret = dvdcss->pf_read(dvdcss, p_sector, 1);
+  i_ret = dvdcss->device_strategy.read(dvdcss, p_sector, 1);
   if (i_ret != 1) {
     goto error;
   }
@@ -381,15 +414,13 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   /* Get the date + serial */
   psz_serial = p_sector + kManufacturingDateOffset;
   psz_serial[kManufacturingDateLength] = '\0';
+  serial_string = reinterpret_cast<char *>(psz_serial);
 
   /* Check that all characters are digits, otherwise convert. */
   for (i = 0; i < kManufacturingDateLength; i++) {
     if (psz_serial[i] < '0' || psz_serial[i] > '9') {
-      char psz_tmp[kManufacturingDateLength + 1];
-      sprintf(psz_tmp, "%.2x%.2x%.2x%.2x%.2x%.2x%.2x%.2x", psz_serial[0],
-              psz_serial[1], psz_serial[2], psz_serial[3], psz_serial[4],
-              psz_serial[5], psz_serial[6], psz_serial[7]);
-      memcpy(psz_serial, psz_tmp, kManufacturingDateLength);
+      serial_string = format_hex_bytes(
+          std::span<const uint8_t>{psz_serial, kManufacturingDateLength / 2});
       break;
     }
   }
@@ -397,20 +428,11 @@ static void create_cache_subdir(dvdcss_t dvdcss) {
   /* Get disk key, since some discs have the same title, manufacturing
    * date and serial number, but different keys. */
   if (dvdcss->b_scrambled) {
-    for (i = 0; i < DVD_KEY_SIZE; i++) {
-      sprintf(&psz_key[i * 2], "%.2x", dvdcss->css.p_disc_key[i]);
-    }
-    psz_key[kStringKeySize] = '\0';
-  } else {
-    psz_key[0] = 0;
+    key_string = format_hex_bytes(std::span{dvdcss->css.p_disc_key});
   }
 
   /* We have a disc name or ID, we can create the cache subdirectory. */
-  cache_subdir = psz_title;
-  cache_subdir += "-";
-  cache_subdir += reinterpret_cast<char *>(psz_serial);
-  cache_subdir += "-";
-  cache_subdir += psz_key;
+  cache_subdir = format("{}-{}-{}", psz_title, serial_string, key_string);
   dvdcss->psz_cachefile /= cache_subdir;
 
   i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
@@ -490,17 +512,18 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   }
 
   /* Initialize structure with default values. */
-  dvdcss->i_fd = -1;
+  dvdcss->i_fd.reset();
   dvdcss->i_pos = 0;
   dvdcss->psz_device = psz_target ? psz_target : "";
   dvdcss->psz_error = "no error";
   dvdcss->i_method = dvdcss_method::key;
   dvdcss->psz_cachefile.clear();
+  dvdcss->device_strategy = {};
 
   dvdcss->p_stream = p_stream;
   dvdcss->p_stream_cb = p_stream_cb;
 
-  dvdcss->cpxm = NULL;
+  dvdcss->cpxm = nullptr;
   dvdcss->cpxm_was_cached = 0;
 
   /* Set library verbosity from DVDCSS_VERBOSE environment variable. */
@@ -551,7 +574,7 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   init_cache(dvdcss);
 
   /* Seek to the beginning, just for safety. */
-  dvdcss->pf_seek(dvdcss, 0);
+  dvdcss->device_strategy.seek(dvdcss, 0);
 
   return dvdcss_state.release();
 
@@ -607,7 +630,7 @@ extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
     }
   }
 
-  return dvdcss->pf_seek(dvdcss, i_blocks);
+  return dvdcss->device_strategy.seek(dvdcss, i_blocks);
 }
 
 /**
@@ -638,7 +661,7 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
   uint8_t *_p_buffer = static_cast<uint8_t *>(p_buffer);
   int i_ret, i_index;
 
-  i_ret = dvdcss->pf_read(dvdcss, _p_buffer, i_blocks);
+  i_ret = dvdcss->device_strategy.read(dvdcss, _p_buffer, i_blocks);
 
   if (i_ret <= 0 || !dvdcss->b_scrambled || !(i_flags & DVDCSS_READ_DECRYPT)) {
     return i_ret;
@@ -659,7 +682,9 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
   } else {
     /* Decrypt the blocks we managed to read */
     for (i_index = i_ret; i_index; i_index--) {
-      dvdcss_unscramble(dvdcss->css.p_title_key, _p_buffer);
+      dvdcss_unscramble(dvdcss->css.p_title_key,
+                        std::span<uint8_t>{
+                            _p_buffer, static_cast<size_t>(DVDCSS_BLOCK_SIZE)});
       _p_buffer[0x14] &= 0x8f;
       _p_buffer = _p_buffer + DVDCSS_BLOCK_SIZE;
     }
@@ -699,39 +724,29 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
 extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
                             int i_flags) {
   struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
-  int i_ret, i_index;
-  void *iov_base;
-  size_t iov_len;
+  auto buffers = make_scatter_buffers(_p_iovec, i_blocks);
+  int i_ret;
 
-  i_ret = dvdcss->pf_readv(dvdcss, _p_iovec, i_blocks);
+  i_ret = dvdcss->device_strategy.readv(dvdcss, buffers);
 
   if (i_ret <= 0 || !dvdcss->b_scrambled || !(i_flags & DVDCSS_READ_DECRYPT)) {
     return i_ret;
   }
 
-  /* Initialize loop for decryption */
-  iov_base = _p_iovec->iov_base;
-  iov_len = _p_iovec->iov_len;
+  int blocks_remaining = i_ret;
 
   /* Decrypt the blocks we managed to read */
-  for (i_index = i_ret; i_index; i_index--) {
-    /* Check that iov_len is a multiple of 2048 */
-    if (iov_len & 0x7ff) {
+  for (auto buffer : buffers) {
+    if (buffer.size() & 0x7ff) {
       return -1;
     }
 
-    while (iov_len == 0) {
-      _p_iovec++;
-      iov_base = _p_iovec->iov_base;
-      iov_len = _p_iovec->iov_len;
+    for (size_t offset = 0; offset < buffer.size() && blocks_remaining > 0;
+         offset += DVDCSS_BLOCK_SIZE, --blocks_remaining) {
+      auto sector = buffer.subspan(offset, DVDCSS_BLOCK_SIZE);
+      dvdcss_unscramble(dvdcss->css.p_title_key, sector);
+      sector[0x14] &= 0x8f;
     }
-
-    auto *sector = static_cast<uint8_t *>(iov_base);
-    dvdcss_unscramble(dvdcss->css.p_title_key, sector);
-    sector[0x14] &= 0x8f;
-
-    iov_base = sector + DVDCSS_BLOCK_SIZE;
-    iov_len -= DVDCSS_BLOCK_SIZE;
   }
 
   return i_ret;
@@ -747,13 +762,7 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
  * On return, the #dvdcss_t is invalidated and may not be used again.
  */
 extern "C" int dvdcss_close(dvdcss_t dvdcss) {
-  int i_ret;
-
-  /* close cpxm related structures if they were used */
-  dvdcpxm_close_internal(dvdcss);
-
-  i_ret = dvdcss_close_device(dvdcss);
-
+  const int i_ret = dvdcss->cleanup();
   delete dvdcss;
 
   return i_ret;

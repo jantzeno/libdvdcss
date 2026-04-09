@@ -35,6 +35,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <span>
 #include <sys/types.h>
 
 #if defined(_WIN32)
@@ -247,8 +248,13 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
 /*****************************************************************************
  * ioctl_ReadDiscKey: get the disc key
  *****************************************************************************/
-int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
+int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
+                      std::span<uint8_t> p_key) {
   int i_ret;
+
+  if (p_key.size() < DVD_DISCKEY_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_struct dvd = {0};
@@ -262,7 +268,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, dvd.disckey.value, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), dvd.disckey.value, DVD_DISCKEY_SIZE);
 
 #elif defined(HAVE_BSD_DVD_STRUCT)
   struct dvd_struct dvd = {0};
@@ -276,7 +282,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, dvd.data, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), dvd.data, DVD_DISCKEY_SIZE);
 
 #elif defined(__HAIKU__)
   INIT_RDC(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
@@ -290,7 +296,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, p_buffer + 4, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
   INIT_USCSI(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
@@ -305,7 +311,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, p_buffer + 4, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   INIT_DVDIOCTL(dk_dvd_read_structure_t, DVDDiscKeyInfo,
@@ -315,7 +321,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = ioctl(i_fd, DKIOCDVDREADSTRUCTURE, &dvd);
 
-  memcpy(p_key, dvdbs.discKeyStructures, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), dvdbs.discKeyStructures, DVD_DISCKEY_SIZE);
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -336,7 +342,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, key->KeyData, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), key->KeyData, DVD_DISCKEY_SIZE);
 
 #elif defined(__QNXNTO__)
 
@@ -347,7 +353,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
-  memcpy(p_key, p_buffer + 4, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
@@ -363,7 +369,7 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     return i_ret;
   }
 
-  memcpy(p_key, p_buffer + 4, DVD_DISCKEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -376,8 +382,12 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
  * ioctl_ReadTitleKey: get the title key
  *****************************************************************************/
 int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
-                       uint8_t *p_key) {
+                       std::span<uint8_t> p_key) {
   int i_ret;
+
+  if (p_key.size() < DVD_KEY_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_authinfo auth_info = {0};
@@ -388,7 +398,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
-  memcpy(p_key, auth_info.lstk.title_key, DVD_KEY_SIZE);
+  memcpy(p_key.data(), auth_info.lstk.title_key, DVD_KEY_SIZE);
 
 #elif defined(HAVE_BSD_DVD_STRUCT)
   struct dvd_authinfo auth_info = {0};
@@ -399,7 +409,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
 
-  memcpy(p_key, auth_info.keychal, DVD_KEY_SIZE);
+  memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
 
 #elif defined(__HAIKU__)
   INIT_RDC(GPCMD_REPORT_KEY, 12);
@@ -412,7 +422,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
-  memcpy(p_key, p_buffer + 5, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
   INIT_USCSI(GPCMD_REPORT_KEY, 12);
@@ -434,7 +444,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   /* a->lstk.cp_sec = (buf[ 4 ] >> 6) & 1; */
   /* a->lstk.cgms   = (buf[ 4 ] >> 4) & 3; */
 
-  memcpy(p_key, p_buffer + 5, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   INIT_DVDIOCTL(dk_dvd_report_key_t, DVDTitleKeyInfo, kDVDKeyFormatTitleKey);
@@ -445,7 +455,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   i_ret = ioctl(i_fd, DKIOCDVDREPORTKEY, &dvd);
 
-  memcpy(p_key, dvdbs.titleKeyValue, DVD_KEY_SIZE);
+  memcpy(p_key.data(), dvdbs.titleKeyValue, DVD_KEY_SIZE);
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -464,7 +474,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
               ? 0
               : -1;
 
-  memcpy(p_key, key->KeyData, DVD_KEY_SIZE);
+  memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
 #elif defined(__QNXNTO__)
 
@@ -478,7 +488,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
-  memcpy(p_key, p_buffer + 5, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_REPORT_KEY, 12);
@@ -493,7 +503,7 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
                   &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
 
-  memcpy(p_key, p_buffer + 5, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -602,8 +612,12 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
  * ioctl_ReportChallenge: get challenge from the drive
  *****************************************************************************/
 int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
-                          uint8_t *p_challenge) {
+                          std::span<uint8_t> p_challenge) {
   int i_ret;
+
+  if (p_challenge.size() < DVD_CHALLENGE_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_authinfo auth_info = {0};
@@ -613,7 +627,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
-  memcpy(p_challenge, auth_info.lsc.chal, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), auth_info.lsc.chal, DVD_CHALLENGE_SIZE);
 
 #elif defined(HAVE_BSD_DVD_STRUCT)
   struct dvd_authinfo auth_info = {0};
@@ -623,7 +637,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
 
-  memcpy(p_challenge, auth_info.keychal, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), auth_info.keychal, DVD_CHALLENGE_SIZE);
 
 #elif defined(__HAIKU__)
   INIT_RDC(GPCMD_REPORT_KEY, 16);
@@ -632,7 +646,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
-  memcpy(p_challenge, p_buffer + 4, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(SOLARIS_USCSI)
   INIT_USCSI(GPCMD_REPORT_KEY, 16);
@@ -645,7 +659,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
     i_ret = -1;
   }
 
-  memcpy(p_challenge, p_buffer + 4, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   INIT_DVDIOCTL(dk_dvd_report_key_t, DVDChallengeKeyInfo,
@@ -655,7 +669,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   i_ret = ioctl(i_fd, DKIOCDVDREPORTKEY, &dvd);
 
-  memcpy(p_challenge, dvdbs.challengeKeyValue, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), dvdbs.challengeKeyValue, DVD_CHALLENGE_SIZE);
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -676,7 +690,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
     return i_ret;
   }
 
-  memcpy(p_challenge, key->KeyData, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), key->KeyData, DVD_CHALLENGE_SIZE);
 
 #elif defined(__QNXNTO__)
 
@@ -686,7 +700,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
-  memcpy(p_challenge, p_buffer + 4, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_REPORT_KEY, 16);
@@ -697,7 +711,7 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
                   &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
 
-  memcpy(p_challenge, p_buffer + 4, DVD_CHALLENGE_SIZE);
+  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -818,8 +832,13 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
 /*****************************************************************************
  * ioctl_ReportKey1: get the first key from the drive
  *****************************************************************************/
-int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
+int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
+                     std::span<uint8_t> p_key) {
   int i_ret;
+
+  if (p_key.size() < DVD_KEY_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_authinfo auth_info = {0};
@@ -829,7 +848,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
-  memcpy(p_key, auth_info.lsk.key, DVD_KEY_SIZE);
+  memcpy(p_key.data(), auth_info.lsk.key, DVD_KEY_SIZE);
 
 #elif defined(HAVE_BSD_DVD_STRUCT)
   struct dvd_authinfo auth_info = {0};
@@ -839,7 +858,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
 
-  memcpy(p_key, auth_info.keychal, DVD_KEY_SIZE);
+  memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
 
 #elif defined(__HAIKU__)
   INIT_RDC(GPCMD_REPORT_KEY, 12);
@@ -848,7 +867,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
-  memcpy(p_key, p_buffer + 4, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
   INIT_USCSI(GPCMD_REPORT_KEY, 12);
@@ -861,7 +880,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
     i_ret = -1;
   }
 
-  memcpy(p_key, p_buffer + 4, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   INIT_DVDIOCTL(dk_dvd_report_key_t, DVDKey1Info, kDVDKeyFormatKey1);
@@ -870,7 +889,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = ioctl(i_fd, DKIOCDVDREPORTKEY, &dvd);
 
-  memcpy(p_key, dvdbs.key1Value, DVD_KEY_SIZE);
+  memcpy(p_key.data(), dvdbs.key1Value, DVD_KEY_SIZE);
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -887,7 +906,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
               ? 0
               : -1;
 
-  memcpy(p_key, key->KeyData, DVD_KEY_SIZE);
+  memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
 #elif defined(__QNXNTO__)
 
@@ -897,7 +916,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
-  memcpy(p_key, p_buffer + 4, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_REPORT_KEY, 12);
@@ -908,7 +927,7 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid, uint8_t *p_key) {
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
                   &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
 
-  memcpy(p_key, p_buffer + 4, DVD_KEY_SIZE);
+  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -1004,8 +1023,12 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
  * decryption
  *****************************************************************************/
 int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
-                          uint8_t *p_data_buffer) {
+                          std::span<uint8_t> p_data_buffer) {
   int i_ret;
+
+  if (p_data_buffer.size() < CPRM_MEDIA_ID_SIZE) {
+    return -1;
+  }
 
 #if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
     (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
@@ -1034,7 +1057,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   if (i_ret < 0 || io_hdr.status) {
     i_ret = -1;
   } else {
-    memcpy(p_data_buffer, data_buf.data() + 4, CPRM_MEDIA_ID_SIZE);
+    memcpy(p_data_buffer.data(), data_buf.data() + 4, CPRM_MEDIA_ID_SIZE);
     i_ret = 0;
   }
 
@@ -1042,7 +1065,8 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   DWORD tmp;
   SCSI_PASS_THROUGH_DIRECT sptd = {};
   sptd.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
-  sptd.DataBuffer = p_data_buffer;
+  std::array<uint8_t, CPRM_MEDIA_ID_SIZE + 4> raw_buffer = {};
+  sptd.DataBuffer = raw_buffer.data();
   sptd.DataTransferLength = CPRM_MEDIA_ID_SIZE + 4;
 
   WinInitSPTD(&sptd, GPCMD_READ_DVD_STRUCTURE);
@@ -1057,7 +1081,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
           : -1;
 
   if (i_ret == 0)
-    memmove(p_data_buffer, p_data_buffer + 4, CPRM_MEDIA_ID_SIZE);
+    memcpy(p_data_buffer.data(), raw_buffer.data() + 4, CPRM_MEDIA_ID_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   int h_dvd;
@@ -1071,7 +1095,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
 
   i_ret = ioctl(h_dvd, DKIOCDVDREADSTRUCTURE, &dvd);
   if (i_ret == 0)
-    memcpy(p_data_buffer, dvd.buffer, sizeof(dvd.bufferLength));
+    memcpy(p_data_buffer.data(), dvd.buffer, CPRM_MEDIA_ID_SIZE);
 
 #elif defined(__OS2__)
   INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MEDIA_ID_SIZE + 4);
@@ -1083,7 +1107,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
                   &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
   if (i_ret == 0)
-    memcpy(p_data_buffer, p_buffer, CPRM_MEDIA_ID_SIZE);
+    memcpy(p_data_buffer.data(), p_buffer, CPRM_MEDIA_ID_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -1096,8 +1120,12 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
  * ioctl_ReadCPRMMKBPack: Reads Media Key Block pack from the disk for cprm
  *****************************************************************************/
 int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
-                          uint8_t *p_mkb_pack, int *p_total_packs) {
+                          std::span<uint8_t> p_mkb_pack, int *p_total_packs) {
   int i_ret;
+
+  if (p_mkb_pack.size() < CPRM_MKB_PACK_SIZE) {
+    return -1;
+  }
 
 #if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
     (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
@@ -1132,7 +1160,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
     i_ret = -1;
   } else {
     *p_total_packs = sptd_buf[3];
-    memcpy(p_mkb_pack, sptd_buf.data() + 4, CPRM_MKB_PACK_SIZE);
+    memcpy(p_mkb_pack.data(), sptd_buf.data() + 4, CPRM_MKB_PACK_SIZE);
   }
 
 #elif defined(DARWIN_DVD_IOCTL)
@@ -1147,7 +1175,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 
   i_ret = ioctl(h_dvd, DKIOCDVDREADSTRUCTURE, &dvd);
   if (i_ret == 0)
-    memcpy(p_mkb_pack, dvd.buffer, sizeof(dvd.bufferLength));
+    memcpy(p_mkb_pack.data(), dvd.buffer, CPRM_MKB_PACK_SIZE);
 
 #elif defined(_WIN32)
   DWORD tmp;
@@ -1174,7 +1202,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
 
   if (i_ret == 0) {
     *p_total_packs = p_buffer[3];
-    memcpy(p_mkb_pack, p_buffer + 4, CPRM_MKB_PACK_SIZE);
+    memcpy(p_mkb_pack.data(), p_buffer + 4, CPRM_MKB_PACK_SIZE);
   }
   return i_ret;
 
@@ -1193,7 +1221,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
                   &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
   if (i_ret == 0) {
     *p_total_packs = p_buffer[3];
-    memcpy(p_mkb_pack, p_buffer + 4, CPRM_MKB_PACK_SIZE);
+    memcpy(p_mkb_pack.data(), p_buffer + 4, CPRM_MKB_PACK_SIZE);
   }
 
 #else
@@ -1207,8 +1235,12 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
  * ioctl_SendChallenge: send challenge to the drive
  *****************************************************************************/
 int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
-                        const uint8_t *p_challenge) {
+                        std::span<const uint8_t> p_challenge) {
   int i_ret;
+
+  if (p_challenge.size() < DVD_CHALLENGE_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_authinfo auth_info = {0};
@@ -1216,7 +1248,7 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   auth_info.type = DVD_HOST_SEND_CHALLENGE;
   auth_info.hsc.agid = *pi_agid;
 
-  memcpy(auth_info.hsc.chal, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(auth_info.hsc.chal, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
@@ -1226,7 +1258,7 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   auth_info.format = DVD_SEND_CHALLENGE;
   auth_info.agid = *pi_agid;
 
-  memcpy(auth_info.keychal, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(auth_info.keychal, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
 
@@ -1262,7 +1294,7 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
 
   dvdbs.dataLength[1] = 0xe;
-  memcpy(dvdbs.challengeKeyValue, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(dvdbs.challengeKeyValue, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = ioctl(i_fd, DKIOCDVDSENDKEY, &dvd);
 
@@ -1276,7 +1308,7 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   key->KeyType = DVD_KEY_TYPE::DvdChallengeKey;
   key->KeyFlags = 0;
 
-  memcpy(key->KeyData, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(key->KeyData, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_SEND_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)
@@ -1316,8 +1348,13 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 /*****************************************************************************
  * ioctl_SendKey2: send the second key to the drive
  *****************************************************************************/
-int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
+int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
+                   std::span<const uint8_t> p_key) {
   int i_ret;
+
+  if (p_key.size() < DVD_KEY_SIZE) {
+    return -1;
+  }
 
 #if defined(HAVE_LINUX_DVD_STRUCT)
   dvd_authinfo auth_info = {0};
@@ -1325,7 +1362,7 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
   auth_info.type = DVD_HOST_SEND_KEY2;
   auth_info.hsk.agid = *pi_agid;
 
-  memcpy(auth_info.hsk.key, p_key, DVD_KEY_SIZE);
+  memcpy(auth_info.hsk.key, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
@@ -1335,7 +1372,7 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
   auth_info.format = DVD_SEND_KEY2;
   auth_info.agid = *pi_agid;
 
-  memcpy(auth_info.keychal, p_key, DVD_KEY_SIZE);
+  memcpy(auth_info.keychal, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
 
@@ -1370,7 +1407,7 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
 
   dvdbs.dataLength[1] = 0xa;
-  memcpy(dvdbs.key2Value, p_key, DVD_KEY_SIZE);
+  memcpy(dvdbs.key2Value, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = ioctl(i_fd, DKIOCDVDSENDKEY, &dvd);
 
@@ -1384,7 +1421,7 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid, const uint8_t *p_key) {
   key->KeyType = DVD_KEY_TYPE::DvdBusKey2;
   key->KeyFlags = 0;
 
-  memcpy(key->KeyData, p_key, DVD_KEY_SIZE);
+  memcpy(key->KeyData, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = DeviceIoControl(DVDCSS_TO_HANDLE(i_fd), IOCTL_DVD_SEND_KEY, key,
                           key->KeyLength, key, key->KeyLength, &tmp, NULL)

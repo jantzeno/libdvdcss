@@ -36,6 +36,7 @@
 #include "ioctl.h"
 #include "libdvdcpxm.h"
 #include "libdvdcss.h"
+#include <span>
 #include <stddef.h>
 
 /******************************************************************************
@@ -49,7 +50,8 @@ int cppm_set_id_album(dvdcss_t dvdcss) {
   }
 
   /* Get encrypted disc key */
-  if (ioctl_ReadDiscKey(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer) < 0) {
+  if (ioctl_ReadDiscKey(dvdcss->i_fd, &dvdcss->css.i_agid,
+                        std::span{p_buffer}) < 0) {
     print_error(dvdcss, "ioctl ReadDiscKey failed");
     return -1;
   }
@@ -82,7 +84,8 @@ int cprm_set_id_media(dvdcss_t dvdcss) {
     return -1;
   }
 
-  if (ioctl_ReadCPRMMediaId(dvdcss->i_fd, &dvdcss->css.i_agid, p_buffer))
+  if (ioctl_ReadCPRMMediaId(dvdcss->i_fd, &dvdcss->css.i_agid,
+                            std::span<uint8_t>{p_buffer, CPRM_MEDIA_ID_SIZE}))
     return -1;
 
   dvdcss->cpxm->id_media =

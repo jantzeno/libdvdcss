@@ -30,6 +30,7 @@
 #define DVDCSS_CSS_H
 
 #include <array>
+#include <span>
 #include <stdint.h>
 
 #include "dvdcss/dvdcss.h"
@@ -55,7 +56,7 @@ typedef struct css {
 [[nodiscard]] int dvdcss_test(dvdcss_t);
 [[nodiscard]] int dvdcss_title(dvdcss_t, int);
 [[nodiscard]] int dvdcss_disckey(dvdcss_t);
-int dvdcss_unscramble(const dvdcss_key &, uint8_t *);
+int dvdcss_unscramble(const dvdcss_key &, std::span<uint8_t>);
 
 /* exported for USB authentification in CPXM */
 [[nodiscard]] int GetBusKey(dvdcss_t);

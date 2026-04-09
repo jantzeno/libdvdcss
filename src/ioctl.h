@@ -23,6 +23,7 @@
 #ifndef DVDCSS_IOCTL_H
 #define DVDCSS_IOCTL_H
 
+#include <span>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -31,30 +32,28 @@
 #endif
 
 #include "common.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 [[nodiscard]] int ioctl_ReadCopyright(dvdcss_fd_t, int, int *);
-[[nodiscard]] int ioctl_ReadDiscKey(dvdcss_fd_t, const int *, uint8_t *);
-[[nodiscard]] int ioctl_ReadTitleKey(dvdcss_fd_t, const int *, int, uint8_t *);
+[[nodiscard]] int ioctl_ReadDiscKey(dvdcss_fd_t, const int *,
+                                    std::span<uint8_t>);
+[[nodiscard]] int ioctl_ReadTitleKey(dvdcss_fd_t, const int *, int,
+                                     std::span<uint8_t>);
 [[nodiscard]] int ioctl_ReportAgid(dvdcss_fd_t, int *);
-[[nodiscard]] int ioctl_ReportChallenge(dvdcss_fd_t, const int *, uint8_t *);
-[[nodiscard]] int ioctl_ReportKey1(dvdcss_fd_t, const int *, uint8_t *);
+[[nodiscard]] int ioctl_ReportChallenge(dvdcss_fd_t, const int *,
+                                        std::span<uint8_t>);
+[[nodiscard]] int ioctl_ReportKey1(dvdcss_fd_t, const int *,
+                                   std::span<uint8_t>);
 [[nodiscard]] int ioctl_ReportASF(dvdcss_fd_t, int *);
 [[nodiscard]] int ioctl_InvalidateAgid(dvdcss_fd_t, int *);
 [[nodiscard]] int ioctl_SendChallenge(dvdcss_fd_t, const int *,
-                                      const uint8_t *);
-[[nodiscard]] int ioctl_SendKey2(dvdcss_fd_t, const int *, const uint8_t *);
+                                      std::span<const uint8_t>);
+[[nodiscard]] int ioctl_SendKey2(dvdcss_fd_t, const int *,
+                                 std::span<const uint8_t>);
 [[nodiscard]] int ioctl_ReportRPC(dvdcss_fd_t, int *, int *, int *);
 
 /* Special Ioctl functions for cpxm decryption */
-[[nodiscard]] int ioctl_ReadCPRMMKBPack(dvdcss_fd_t, int *, int, uint8_t *,
-                                        int *);
-[[nodiscard]] int ioctl_ReadCPRMMediaId(dvdcss_fd_t, int *, uint8_t *);
-#ifdef __cplusplus
-}
-#endif
+[[nodiscard]] int ioctl_ReadCPRMMKBPack(dvdcss_fd_t, int *, int,
+                                        std::span<uint8_t>, int *);
+[[nodiscard]] int ioctl_ReadCPRMMediaId(dvdcss_fd_t, int *, std::span<uint8_t>);
 
 inline constexpr int DVD_DISCKEY_SIZE = 2048;
 
