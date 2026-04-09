@@ -27,10 +27,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if defined(__QNXNTO__)
-#include <stdlib.h>
-#endif
-
 #include "common.h"
 [[nodiscard]] int ioctl_ReadCopyright(dvdcss_fd_t, int, int *);
 [[nodiscard]] int ioctl_ReadDiscKey(dvdcss_fd_t, const int *,
@@ -56,53 +52,6 @@
 [[nodiscard]] int ioctl_ReadCPRMMediaId(dvdcss_fd_t, int *, std::span<uint8_t>);
 
 inline constexpr int DVD_DISCKEY_SIZE = 2048;
-
-/*****************************************************************************
- * Common macros, OS-specific
- *****************************************************************************/
-#if defined(__HAIKU__)
-#define INIT_RDC(TYPE, SIZE)                                                   \
-  raw_device_command rdc = {0};                                                \
-  uint8_t p_buffer[(SIZE) + 1];                                                \
-  rdc.data = (char *)p_buffer;                                                 \
-  rdc.data_length = (SIZE);                                                    \
-  BeInitRDC(&rdc, (TYPE));
-#elif defined(SOLARIS_USCSI)
-#define INIT_USCSI(TYPE, SIZE)                                                 \
-  struct uscsi_cmd sc = {0};                                                   \
-  union scsi_cdb rs_cdb;                                                       \
-  uint8_t p_buffer[(SIZE) + 1];                                                \
-  sc.uscsi_cdb = (caddr_t) & rs_cdb;                                           \
-  sc.uscsi_bufaddr = (caddr_t)p_buffer;                                        \
-  sc.uscsi_buflen = (SIZE);                                                    \
-  SolarisInitUSCSI(&sc, (TYPE));
-#elif defined(DARWIN_DVD_IOCTL)
-#define INIT_DVDIOCTL(DKDVD_TYPE, BUFFER_TYPE, FORMAT)                         \
-  DKDVD_TYPE dvd = {0};                                                        \
-  BUFFER_TYPE dvdbs = {0};                                                     \
-  dvd.format = FORMAT;                                                         \
-  dvd.buffer = &dvdbs;                                                         \
-  dvd.bufferLength = sizeof(dvdbs);
-#elif defined(__QNXNTO__)
-#define INIT_CPT(TYPE, SIZE)                                                   \
-  CAM_PASS_THRU *p_cpt = {0};                                                  \
-  uint8_t *p_buffer;                                                           \
-  int structSize = sizeof(CAM_PASS_THRU) + (SIZE);                             \
-  p_cpt = (CAM_PASS_THRU *)malloc(structSize);                                 \
-  p_buffer = (uint8_t *)p_cpt + sizeof(CAM_PASS_THRU);                         \
-  p_cpt->cam_data_ptr = sizeof(CAM_PASS_THRU);                                 \
-  p_cpt->cam_dxfer_len = (SIZE);                                               \
-  QNXInitCPT(p_cpt, (TYPE));
-#elif defined(__OS2__)
-#define INIT_SSC(TYPE, SIZE)                                                   \
-  struct OS2_ExecSCSICmd sdc = {0};                                            \
-  uint8_t p_buffer[(SIZE) + 1] = {0};                                          \
-  unsigned long ulParamLen;                                                    \
-  unsigned long ulDataLen;                                                     \
-  sdc.data_length = (SIZE);                                                    \
-  ulParamLen = sizeof(sdc);                                                    \
-  OS2InitSDC(&sdc, (TYPE))
-#endif
 
 /*****************************************************************************
  * Additional types, OpenBSD-specific

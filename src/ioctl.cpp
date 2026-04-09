@@ -34,7 +34,9 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <sys/types.h>
 
@@ -125,6 +127,128 @@ static void QNXInitCPT(CAM_PASS_THRU *, int);
 static void OS2InitSDC(struct OS2_ExecSCSICmd *, int);
 #endif
 
+#if defined(__HAIKU__)
+template <std::size_t Size> struct HaikuRawDeviceCommandRequest {
+  static constexpr int kTransferSize = static_cast<int>(Size);
+
+  raw_device_command command{};
+  std::array<uint8_t, Size + 1> buffer{};
+
+  explicit HaikuRawDeviceCommandRequest(int type) {
+    command.data = reinterpret_cast<char *>(buffer.data());
+    command.data_length = kTransferSize;
+    BeInitRDC(&command, type);
+  }
+
+  HaikuRawDeviceCommandRequest(const HaikuRawDeviceCommandRequest &) = delete;
+  HaikuRawDeviceCommandRequest &
+  operator=(const HaikuRawDeviceCommandRequest &) = delete;
+  HaikuRawDeviceCommandRequest(HaikuRawDeviceCommandRequest &&) = delete;
+  HaikuRawDeviceCommandRequest &
+  operator=(HaikuRawDeviceCommandRequest &&) = delete;
+};
+#elif defined(SOLARIS_USCSI)
+template <std::size_t Size> struct SolarisUscsiRequest {
+  static constexpr int kTransferSize = static_cast<int>(Size);
+
+  struct uscsi_cmd command{};
+  union scsi_cdb cdb{};
+  std::array<uint8_t, Size + 1> buffer{};
+
+  explicit SolarisUscsiRequest(int type) {
+    command.uscsi_cdb = reinterpret_cast<caddr_t>(&cdb);
+    command.uscsi_bufaddr = reinterpret_cast<caddr_t>(buffer.data());
+    command.uscsi_buflen = kTransferSize;
+    SolarisInitUSCSI(&command, type);
+  }
+
+  SolarisUscsiRequest(const SolarisUscsiRequest &) = delete;
+  SolarisUscsiRequest &operator=(const SolarisUscsiRequest &) = delete;
+  SolarisUscsiRequest(SolarisUscsiRequest &&) = delete;
+  SolarisUscsiRequest &operator=(SolarisUscsiRequest &&) = delete;
+};
+#elif defined(DARWIN_DVD_IOCTL)
+template <typename DkDvdType, typename BufferType>
+struct DarwinDvdIoctlRequest {
+  DkDvdType command{};
+  BufferType buffer{};
+
+  template <typename FormatType>
+  explicit DarwinDvdIoctlRequest(FormatType format) {
+    command.format = format;
+    command.buffer = &buffer;
+    command.bufferLength = sizeof(buffer);
+  }
+
+  DarwinDvdIoctlRequest(const DarwinDvdIoctlRequest &) = delete;
+  DarwinDvdIoctlRequest &operator=(const DarwinDvdIoctlRequest &) = delete;
+  DarwinDvdIoctlRequest(DarwinDvdIoctlRequest &&) = delete;
+  DarwinDvdIoctlRequest &operator=(DarwinDvdIoctlRequest &&) = delete;
+};
+#elif defined(__QNXNTO__)
+struct QnxCamPassThruDeleter {
+  void operator()(CAM_PASS_THRU *command) const noexcept { std::free(command); }
+};
+
+template <std::size_t Size> class QnxCamPassThruRequest {
+public:
+  static constexpr int kTransferSize = static_cast<int>(Size);
+
+  explicit QnxCamPassThruRequest(int type)
+      : struct_size_(static_cast<int>(sizeof(CAM_PASS_THRU) + Size)),
+        command_(static_cast<CAM_PASS_THRU *>(std::malloc(struct_size_))) {
+    if (!command_) {
+      return;
+    }
+
+    memset(command_.get(), 0, struct_size_);
+    command_->cam_data_ptr = sizeof(CAM_PASS_THRU);
+    command_->cam_dxfer_len = kTransferSize;
+    QNXInitCPT(command_.get(), type);
+  }
+
+  CAM_PASS_THRU *command() noexcept { return command_.get(); }
+
+  uint8_t *buffer() noexcept {
+    if (!command_) {
+      return nullptr;
+    }
+
+    return reinterpret_cast<uint8_t *>(command_.get()) + sizeof(CAM_PASS_THRU);
+  }
+
+  int struct_size() const noexcept { return struct_size_; }
+
+  QnxCamPassThruRequest(const QnxCamPassThruRequest &) = delete;
+  QnxCamPassThruRequest &operator=(const QnxCamPassThruRequest &) = delete;
+  QnxCamPassThruRequest(QnxCamPassThruRequest &&) = delete;
+  QnxCamPassThruRequest &operator=(QnxCamPassThruRequest &&) = delete;
+
+private:
+  int struct_size_;
+  std::unique_ptr<CAM_PASS_THRU, QnxCamPassThruDeleter> command_;
+};
+#elif defined(__OS2__)
+template <std::size_t Size> struct Os2ScsiCommandRequest {
+  static constexpr int kTransferSize = static_cast<int>(Size);
+
+  struct OS2_ExecSCSICmd command{};
+  std::array<uint8_t, Size + 1> buffer{};
+  unsigned long parameter_length = sizeof(command);
+  unsigned long data_length = 0;
+
+  explicit Os2ScsiCommandRequest(int type) {
+    command.data_length = kTransferSize;
+    OS2InitSDC(&command, type);
+  }
+
+  Os2ScsiCommandRequest(const Os2ScsiCommandRequest &) = delete;
+  Os2ScsiCommandRequest &operator=(const Os2ScsiCommandRequest &) = delete;
+  Os2ScsiCommandRequest(Os2ScsiCommandRequest &&) = delete;
+  Os2ScsiCommandRequest &operator=(Os2ScsiCommandRequest &&) = delete;
+};
+#endif
+
 /*****************************************************************************
  * ioctl_ReadCopyright: check whether the disc is encrypted or not
  *****************************************************************************/
@@ -152,7 +276,9 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   *pi_copyright = dvd.cpst;
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_READ_DVD_STRUCTURE, 8);
+  HaikuRawDeviceCommandRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[6] = i_layer;
   rdc.command[7] = DVD_STRUCT_COPYRIGHT;
@@ -162,7 +288,10 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   *pi_copyright = p_buffer[4];
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_READ_DVD_STRUCTURE, 8);
+  SolarisUscsiRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[6] = i_layer;
   rs_cdb.cdb_opaque[7] = DVD_STRUCT_COPYRIGHT;
@@ -177,8 +306,10 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   /* s->copyright.rmi = p_buffer[ 5 ]; */
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_read_structure_t, DVDCopyrightInfo,
-                kDVDStructureFormatCopyrightInfo);
+  DarwinDvdIoctlRequest<dk_dvd_read_structure_t, DVDCopyrightInfo> request{
+      kDVDStructureFormatCopyrightInfo};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.layer = i_layer;
 
@@ -216,8 +347,14 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   }
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_READ_DVD_STRUCTURE, 8);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[6] = i_layer;
   p_cpt->cam_cdb[7] = DVD_STRUCT_COPYRIGHT;
@@ -227,7 +364,11 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   *pi_copyright = p_buffer[4];
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_READ_DVD_STRUCTURE, 8);
+  Os2ScsiCommandRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[6] = i_layer;
   sdc.command[7] = DVD_STRUCT_COPYRIGHT;
@@ -285,7 +426,10 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), dvd.data, DVD_DISCKEY_SIZE);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
+  HaikuRawDeviceCommandRequest<DVD_DISCKEY_SIZE + 4> request{
+      GPCMD_READ_DVD_STRUCTURE};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[7] = DVD_STRUCT_DISCKEY;
   rdc.command[10] = *pi_agid << 6;
@@ -299,7 +443,10 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
+  SolarisUscsiRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[7] = DVD_STRUCT_DISCKEY;
   rs_cdb.cdb_opaque[10] = *pi_agid << 6;
@@ -314,8 +461,10 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_read_structure_t, DVDDiscKeyInfo,
-                kDVDStructureFormatDiscKeyInfo);
+  DarwinDvdIoctlRequest<dk_dvd_read_structure_t, DVDDiscKeyInfo> request{
+      kDVDStructureFormatDiscKeyInfo};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
 
@@ -345,8 +494,14 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), key->KeyData, DVD_DISCKEY_SIZE);
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[7] = DVD_STRUCT_DISCKEY;
   p_cpt->cam_cdb[10] = *pi_agid << 6;
@@ -356,7 +511,11 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_READ_DVD_STRUCTURE, DVD_DISCKEY_SIZE + 4);
+  Os2ScsiCommandRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[7] = DVD_STRUCT_DISCKEY;
   sdc.command[10] = *pi_agid << 6;
@@ -412,7 +571,9 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 12);
+  HaikuRawDeviceCommandRequest<12> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[2] = (i_pos >> 24) & 0xff;
   rdc.command[3] = (i_pos >> 16) & 0xff;
@@ -425,7 +586,10 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 12);
+  SolarisUscsiRequest<12> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[2] = (i_pos >> 24) & 0xff;
   rs_cdb.cdb_opaque[3] = (i_pos >> 16) & 0xff;
@@ -447,7 +611,10 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDTitleKeyInfo, kDVDKeyFormatTitleKey);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDTitleKeyInfo> request{
+      kDVDKeyFormatTitleKey};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.address = i_pos;
   dvd.grantID = *pi_agid;
@@ -477,8 +644,14 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<12> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 12);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[2] = (i_pos >> 24) & 0xff;
   p_cpt->cam_cdb[3] = (i_pos >> 16) & 0xff;
@@ -491,7 +664,11 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 12);
+  Os2ScsiCommandRequest<12> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[2] = (i_pos >> 24) & 0xff;
   sdc.command[3] = (i_pos >> 16) & 0xff;
@@ -540,7 +717,9 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   *pi_agid = auth_info.agid;
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 8);
+  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_REPORT_AGID | (*pi_agid << 6);
 
@@ -549,7 +728,10 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   *pi_agid = p_buffer[7] >> 6;
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 8);
+  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_REPORT_AGID | (*pi_agid << 6);
 
@@ -562,8 +744,10 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   *pi_agid = p_buffer[7] >> 6;
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDAuthenticationGrantIDInfo,
-                kDVDKeyFormatAGID_CSS);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDAuthenticationGrantIDInfo>
+      request{kDVDKeyFormatAGID_CSS};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
@@ -581,8 +765,14 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
               : -1;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 8);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_REPORT_AGID | (*pi_agid << 6);
 
@@ -591,7 +781,11 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   *pi_agid = p_buffer[7] >> 6;
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 8);
+  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_REPORT_AGID | (*pi_agid << 6);
 
@@ -640,7 +834,9 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_challenge.data(), auth_info.keychal, DVD_CHALLENGE_SIZE);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 16);
+  HaikuRawDeviceCommandRequest<16> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
 
@@ -649,7 +845,10 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 16);
+  SolarisUscsiRequest<16> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
 
@@ -662,8 +861,10 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDChallengeKeyInfo,
-                kDVDKeyFormatChallengeKey);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDChallengeKeyInfo> request{
+      kDVDKeyFormatChallengeKey};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
 
@@ -693,8 +894,14 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_challenge.data(), key->KeyData, DVD_CHALLENGE_SIZE);
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<16> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 16);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
 
@@ -703,7 +910,11 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 16);
+  Os2ScsiCommandRequest<16> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
 
@@ -747,7 +958,9 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   *pi_asf = auth_info.asf;
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 8);
+  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_REPORT_ASF;
 
@@ -756,7 +969,10 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   *pi_asf = p_buffer[7] & 1;
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 8);
+  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_REPORT_ASF;
 
@@ -769,8 +985,10 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   *pi_asf = p_buffer[7] & 1;
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDAuthenticationSuccessFlagInfo,
-                kDVDKeyFormatASF);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDAuthenticationSuccessFlagInfo>
+      request{kDVDKeyFormatASF};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   i_ret = ioctl(i_fd, DKIOCDVDREPORTKEY, &dvd);
 
@@ -802,8 +1020,14 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   *pi_asf = keyData->SuccessFlag;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 8);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_REPORT_ASF;
 
@@ -812,7 +1036,11 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   *pi_asf = p_buffer[7] & 1;
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 8);
+  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_REPORT_ASF;
 
@@ -861,7 +1089,9 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 12);
+  HaikuRawDeviceCommandRequest<12> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
 
@@ -870,7 +1100,10 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 12);
+  SolarisUscsiRequest<12> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
 
@@ -883,7 +1116,10 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDKey1Info, kDVDKeyFormatKey1);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDKey1Info> request{
+      kDVDKeyFormatKey1};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
 
@@ -909,8 +1145,14 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<12> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 12);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
 
@@ -919,7 +1161,11 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 12);
+  Os2ScsiCommandRequest<12> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
 
@@ -959,14 +1205,17 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 0);
+  HaikuRawDeviceCommandRequest<0> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
 
   rdc.command[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 0);
+  SolarisUscsiRequest<0> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
 
   rs_cdb.cdb_opaque[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
 
@@ -977,8 +1226,9 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
   }
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_send_key_t, DVDAuthenticationGrantIDInfo,
-                kDVDKeyFormatAGID_Invalidate);
+  DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDAuthenticationGrantIDInfo>
+      request{kDVDKeyFormatAGID_Invalidate};
+  auto &dvd = request.command;
 
   dvd.grantID = *pi_agid;
 
@@ -993,15 +1243,23 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
               : -1;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<0> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 0);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 1);
+  Os2ScsiCommandRequest<1> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.data_length = 0;
   sdc.command[8] = 0;
@@ -1098,7 +1356,12 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
     memcpy(p_data_buffer.data(), dvd.buffer, CPRM_MEDIA_ID_SIZE);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MEDIA_ID_SIZE + 4);
+  Os2ScsiCommandRequest<CPRM_MEDIA_ID_SIZE + 4> request{
+      GPCMD_READ_DVD_STRUCTURE};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[7] = CPRM_STRUCT_MEDIA_ID;
   sdc.command[10] = *p_agid << 6;
@@ -1207,7 +1470,12 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   return i_ret;
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MKB_PACK_SIZE + 4);
+  Os2ScsiCommandRequest<CPRM_MKB_PACK_SIZE + 4> request{
+      GPCMD_READ_DVD_STRUCTURE};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[2] = static_cast<uint8_t>((mkb_pack >> 24) & 0xFF);
   sdc.command[3] = static_cast<uint8_t>((mkb_pack >> 16) & 0xFF);
@@ -1263,22 +1531,27 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_SEND_KEY, 16);
+  HaikuRawDeviceCommandRequest<16> request{GPCMD_SEND_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
 
   p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_SEND_KEY, 16);
+  SolarisUscsiRequest<16> request{GPCMD_SEND_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
 
   p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   if (SolarisSendUSCSI(i_fd, &sc) < 0 || sc.uscsi_status) {
     return -1;
@@ -1287,8 +1560,10 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = 0;
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_send_key_t, DVDChallengeKeyInfo,
-                kDVDKeyFormatChallengeKey);
+  DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDChallengeKeyInfo> request{
+      kDVDKeyFormatChallengeKey};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
@@ -1316,23 +1591,33 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
               : -1;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<16> request{GPCMD_SEND_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_SEND_KEY, 16);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
 
   p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_SEND_KEY, 16);
+  Os2ScsiCommandRequest<16> request{GPCMD_SEND_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
 
   p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge, DVD_CHALLENGE_SIZE);
+  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret =
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
@@ -1377,22 +1662,27 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_SEND_KEY, 12);
+  HaikuRawDeviceCommandRequest<12> request{GPCMD_SEND_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
 
   p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key, DVD_KEY_SIZE);
+  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_SEND_KEY, 12);
+  SolarisUscsiRequest<12> request{GPCMD_SEND_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
 
   p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key, DVD_KEY_SIZE);
+  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
 
   if (SolarisSendUSCSI(i_fd, &sc) < 0 || sc.uscsi_status) {
     return -1;
@@ -1401,7 +1691,10 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = 0;
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_send_key_t, DVDKey2Info, kDVDKeyFormatKey2);
+  DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDKey2Info> request{
+      kDVDKeyFormatKey2};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.grantID = *pi_agid;
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
@@ -1429,23 +1722,33 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
               : -1;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<12> request{GPCMD_SEND_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_SEND_KEY, 12);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
 
   p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key, DVD_KEY_SIZE);
+  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_SEND_KEY, 12);
+  Os2ScsiCommandRequest<12> request{GPCMD_SEND_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
 
   p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key, DVD_KEY_SIZE);
+  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
 
   i_ret =
       DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
@@ -1491,7 +1794,9 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_scheme = auth_info.rpc_scheme;
 
 #elif defined(__HAIKU__)
-  INIT_RDC(GPCMD_REPORT_KEY, 8);
+  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &rdc = request.command;
+  auto *p_buffer = request.buffer.data();
 
   rdc.command[10] = DVD_REPORT_RPC;
 
@@ -1502,7 +1807,10 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_scheme = p_buffer[6];
 
 #elif defined(SOLARIS_USCSI)
-  INIT_USCSI(GPCMD_REPORT_KEY, 8);
+  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sc = request.command;
+  auto &rs_cdb = request.cdb;
+  auto *p_buffer = request.buffer.data();
 
   rs_cdb.cdb_opaque[10] = DVD_REPORT_RPC;
 
@@ -1517,8 +1825,10 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_scheme = p_buffer[6];
 
 #elif defined(DARWIN_DVD_IOCTL)
-  INIT_DVDIOCTL(dk_dvd_report_key_t, DVDRegionPlaybackControlInfo,
-                kDVDKeyFormatRegionState);
+  DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDRegionPlaybackControlInfo>
+      request{kDVDKeyFormatRegionState};
+  auto &dvd = request.command;
+  auto &dvdbs = request.buffer;
 
   dvd.keyClass = kDVDKeyClassCSS_CPPM_CPRM;
 
@@ -1553,8 +1863,14 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_scheme = keyData->RpcScheme;
 
 #elif defined(__QNXNTO__)
+  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
+  auto *p_cpt = request.command();
+  auto *p_buffer = request.buffer();
+  const int structSize = request.struct_size();
 
-  INIT_CPT(GPCMD_REPORT_KEY, 8);
+  if (!p_cpt) {
+    return -1;
+  }
 
   p_cpt->cam_cdb[10] = DVD_REPORT_RPC;
 
@@ -1565,7 +1881,11 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_scheme = p_buffer[6];
 
 #elif defined(__OS2__)
-  INIT_SSC(GPCMD_REPORT_KEY, 8);
+  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
+  auto &sdc = request.command;
+  auto *p_buffer = request.buffer.data();
+  auto &ulParamLen = request.parameter_length;
+  auto &ulDataLen = request.data_length;
 
   sdc.command[10] = DVD_REPORT_RPC;
 

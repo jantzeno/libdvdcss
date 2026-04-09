@@ -90,7 +90,7 @@
 
 ### Ioctl platform dispatch (`src/ioctl.cpp`)
 
-- [ ] Replace `INIT_RDC` / `INIT_USCSI` / `INIT_DVDIOCTL` / `INIT_CPT` / `INIT_SSC` macro families with `constexpr` builder functions or platform-specific factory helpers
+- [x] Replace `INIT_RDC` / `INIT_USCSI` / `INIT_DVDIOCTL` / `INIT_CPT` / `INIT_SSC` macro families with `constexpr` builder functions or platform-specific factory helpers
 - [x] Replace `memset(&struct, 0, sizeof)` patterns with value-initialization `{}`
 
 ### Error handling internals
