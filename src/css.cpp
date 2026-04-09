@@ -103,7 +103,7 @@ static std::filesystem::path build_cache_block_path(const dvdcss_t dvdcss,
  *  -3: drive is RPC-II, region is not set, and DVD is scrambled: the RPC
  *      scheme will prevent us from reading the scrambled data
  *****************************************************************************/
-extern "C" int dvdcss_test(dvdcss_t dvdcss) {
+int dvdcss_test(dvdcss_t dvdcss) {
   const char *psz_type, *psz_rpc;
   char psz_region[17];
   char *p_region = psz_region;
@@ -201,7 +201,7 @@ extern "C" int dvdcss_test(dvdcss_t dvdcss) {
  * This function should only be called by dvdcss->pf_seek and should eventually
  * not be external if possible.
  *****************************************************************************/
-extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
+int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   dvdcss_key p_title_key = {};
   int i_fd, i_ret = -1, b_cache = 0;
   auto title_it =
@@ -306,7 +306,7 @@ extern "C" int dvdcss_title(dvdcss_t dvdcss, int i_block) {
  *  -disc key hash crack,
  *  -decryption with player keys if they are available.
  *****************************************************************************/
-extern "C" int dvdcss_disckey(dvdcss_t dvdcss) {
+int dvdcss_disckey(dvdcss_t dvdcss) {
   unsigned char p_buffer[DVD_DISCKEY_SIZE];
   dvdcss_key p_disc_key = {};
   int i;
@@ -493,7 +493,7 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
  * sec: sector to unscramble
  * key: title key for this sector
  *****************************************************************************/
-extern "C" int dvdcss_unscramble(const dvdcss_key &p_key, uint8_t *p_sec) {
+int dvdcss_unscramble(const dvdcss_key &p_key, uint8_t *p_sec) {
   unsigned int i_t1, i_t2, i_t3, i_t4, i_t5, i_t6;
   uint8_t *p_end = p_sec + DVDCSS_BLOCK_SIZE;
 
@@ -541,7 +541,7 @@ extern "C" int dvdcss_unscramble(const dvdcss_key &p_key, uint8_t *p_sec) {
  * that ASF=1 from the start and then later fail with a 'read of scrambled
  * block without authentication' error.
  *****************************************************************************/
-extern "C" int GetBusKey(dvdcss_t dvdcss) {
+int GetBusKey(dvdcss_t dvdcss) {
   uint8_t p_buffer[10];
   uint8_t p_challenge[2 * DVD_KEY_SIZE];
   dvdcss_key p_key1 = {};
@@ -678,7 +678,7 @@ static void PrintKey(dvdcss_t dvdcss, const char *prefix, const uint8_t *data) {
  *  0 if the device needs to be authenticated,
  *  1 either.
  *****************************************************************************/
-extern "C" int GetASF(dvdcss_t dvdcss) {
+int GetASF(dvdcss_t dvdcss) {
   int i_asf = 0;
 
   if (ioctl_ReportASF(dvdcss->i_fd, &i_asf) != 0) {

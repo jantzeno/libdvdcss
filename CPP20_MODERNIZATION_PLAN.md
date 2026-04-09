@@ -101,7 +101,7 @@
 ### Namespace & linkage
 
 - [ ] Wrap all internal symbols in a `dvdcss` namespace (or `dvdcss::detail`)
-- [ ] Remove mixed-language `extern "C"` seams from internal headers (`css.h`, `device.h`) since no C TUs remain
+- [x] Remove mixed-language `extern "C"` seams from internal headers (`css.h`, `device.h`) since no C TUs remain
 - [x] Remove the `print_error_cpp`/`print_debug_cpp` macro remap in `src/libdvdcss.h` — use a single C++ declaration
 
 ## Phase 4 — Cleanup & Validation

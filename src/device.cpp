@@ -107,7 +107,7 @@ static int win2k_readv(dvdcss_t, const struct iovec *, int);
 static int os2_open(dvdcss_t, const char *);
 #endif
 
-extern "C" int dvdcss_use_ioctls(dvdcss_t dvdcss) {
+int dvdcss_use_ioctls(dvdcss_t dvdcss) {
   if (dvdcss->p_stream)
     return 0;
 
@@ -158,7 +158,7 @@ extern "C" int dvdcss_use_ioctls(dvdcss_t dvdcss) {
 #endif
 }
 
-extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
+void dvdcss_check_device(dvdcss_t dvdcss) {
 #if defined(_WIN32)
   DWORD drives;
   int i;
@@ -324,7 +324,7 @@ extern "C" void dvdcss_check_device(dvdcss_t dvdcss) {
   print_error(dvdcss, "could not find a suitable default drive");
 }
 
-extern "C" int dvdcss_open_device(dvdcss_t dvdcss) {
+int dvdcss_open_device(dvdcss_t dvdcss) {
   const char *psz_device = getenv("DVDCSS_RAW_DEVICE");
   if (!psz_device) {
     psz_device = dvdcss->psz_device.c_str();
@@ -379,7 +379,7 @@ extern "C" int dvdcss_open_device(dvdcss_t dvdcss) {
   }
 }
 
-extern "C" int dvdcss_close_device(dvdcss_t dvdcss) {
+int dvdcss_close_device(dvdcss_t dvdcss) {
   if (dvdcss->p_stream) {
     return 0;
   }
