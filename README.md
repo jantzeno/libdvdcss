@@ -1,3 +1,14 @@
+I are probably looking for this, [libdvdcss](https://www.videolan.org/developers/libdvdcss.html).
+
+# What? and Why?
+
+In pursuit of watching [The Complete Collection of Viper](https://www.imdb.com/title/tt0108983/), without needing a DVD player, I needed to build libdvdcss. Out of curiosity I wondered if it could be accomplished, not if it should be accomplished. The result of exercising my software freedom was a file by file conversion to C++ish while maintaining the C API.
+
+Meson installs to `/usr/local/lib64`.
+I had to create `/etc/ld.so.conf.d/libdvdcss.conf` to point pkg-config to the correct location `/usr/local/lib64`.
+
+It works on my machine. This experiment is not maintained or guaranteed. I am not a libdvdcss maintainer. I have no affiliation with VideoLAN.
+
 # Goals and features
 
 **Libdvdcss** is a portable abstraction **lib**rary for **DVD** decryption.
