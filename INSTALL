@@ -1,68 +1,78 @@
-INSTALL file for libdvdcss, a DVD access library
+Building and installing libdvdcss
+==================================
 
+Requirements
+------------
 
-Configuring libdvdcss
-=====================
+libdvdcss requires Meson 1.3 or newer, Ninja, a C11 compiler, and a C++23
+compiler/standard library. The configure step verifies every required C++23
+facility instead of relying on compiler version numbers.
 
-libdvdcss uses the Meson build system. A typical way to configure it is:
+Supported targets are Linux, Windows, and macOS on x86-64 or AArch64.
 
-  meson setup build --prefix=/usr
+Native build
+------------
 
-The `build' directory can be set to whatever you want, but in-tree builds
-are not allowed. See `meson configure' for all the available options.
+  meson setup build --buildtype=release --prefix=/usr
+  meson compile -C build
+  meson test -C build --print-errorlogs
+  meson install -C build
 
+Meson builds both shared and static libraries by default. Select only one with
+`-Ddefault_library=shared` or `-Ddefault_library=static`.
 
-Building libdvdcss
-==================
+Set `-Denable_examples=true` to build the command-line diagnostics. The
+`dvd_region` utility is Linux-only because it uses the Linux DVD ioctl ABI.
 
-Once configured, change to the build directory and run `ninja' 
-to build libdvdcss.
+Sanitizer build
+---------------
 
-If you have player keys, you need to put them in the file csskeys.h, before
-configuring libdvdcss to enable the "key" method (the one from libcss).
+With Clang or GCC:
 
+  meson setup build-sanitize \
+    -Dbuildtype=debug \
+    -Db_sanitize=address,undefined \
+    -Db_lundef=false
+  meson compile -C build-sanitize
+  meson test -C build-sanitize --print-errorlogs
 
-Installing libdvdcss
-====================
+Some ptrace-based containers cannot run LeakSanitizer. In that environment,
+run the last command with `ASAN_OPTIONS=detect_leaks=0`; AddressSanitizer and
+UndefinedBehaviorSanitizer remain active.
 
-You can install libdvdcss by running `meson install' inside the build
-directory.
+Windows
+-------
 
+For an x86-64 MinGW-w64 cross-build:
 
-Building libdvdcss for Windows
-==============================
+  meson setup build-windows \
+    --cross-file package/crossfiles/x86_64-w64-mingw32.meson
+  meson compile -C build-windows
 
-There are two alternative ways to build libdvdcss for Windows.
+An AArch64 MinGW/LLVM template is provided at
+`package/crossfiles/aarch64-w64-mingw32.meson`; adjust binary names for the
+installed toolchain.
 
-- on a host with the mingw-w64 cross-compilers:
+To run x86-64 Windows tests under Wine, append
+`--cross-file package/crossfiles/wine.meson` during setup.
 
- You need a cross file to tell Meson about the compiler to use. Some
- generic cross files are provided in the `package/crossfiles' directory,
- which can be customized for your needs. If you run, for example, Debian,
- Ubuntu, or Cygwin under Windows with the necessary mingw64 packages
- installed, it would be:
+For MSVC, open an x64 or ARM64 Visual Studio developer shell and use the native
+build commands above. Meson generates a DLL export definition containing only
+the public C API.
 
- for a 32-bit target platform:
-  meson setup build-w32 --cross-file package/crossfiles/i686-w64-mingw32.meson
-  cd build-w32
-  ninja
+Linux AArch64
+-------------
 
- or for a 64-bit target platform:
-  meson setup build-w64 --cross-file package/crossfiles/i686-w64-mingw32.meson
-  cd build-w64
-  ninja
+`package/crossfiles/aarch64-linux-gnu.meson` is a template for the common GNU
+cross-toolchain names:
 
-- natively on Windows with MSYS + MinGW (www.mingw.org):
+  meson setup build-aarch64 \
+    --cross-file package/crossfiles/aarch64-linux-gnu.meson
+  meson compile -C build-aarch64
 
- (MSYS is a minimal build environment to compile Unixish projects under
-  Windows. It provides all the common Unix tools like sh, GNU Make...)
+macOS
+-----
 
- You will need to download and install the latest MSYS and MinGW.
-
- To build libdvdcss you just have to run the following commands:
-
-  meson setup build
-  cd build
-  ninja
-
- More about MSYS on our wiki: http://wiki.videolan.org/Win32CompileMSYS
+Use the native build commands with a current Apple Clang toolchain. To select
+an architecture explicitly, provide an appropriate Meson native or cross file;
+the supported CPU families are `x86_64` and `aarch64`.

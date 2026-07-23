@@ -67,13 +67,13 @@ typedef struct dvdcss_stream_cb {
  * Define LIBDVDCSS_IMPORTS before importing this header to get the
  * correct DLL storage-class when using \e libdvdcss from MSVC. */
 #if defined(LIBDVDCSS_EXPORTS)
-#define LIBDVDCSS_EXPORT __declspec(dllexport) extern
+#define LIBDVDCSS_EXPORT __declspec(dllexport)
 #elif defined(LIBDVDCSS_IMPORTS)
-#define LIBDVDCSS_EXPORT __declspec(dllimport) extern
+#define LIBDVDCSS_EXPORT __declspec(dllimport)
 #elif defined(SUPPORT_ATTRIBUTE_VISIBILITY_DEFAULT)
-#define LIBDVDCSS_EXPORT __attribute__((visibility("default"))) extern
+#define LIBDVDCSS_EXPORT __attribute__((visibility("default")))
 #else
-#define LIBDVDCSS_EXPORT extern
+#define LIBDVDCSS_EXPORT
 #endif
 
 /*
@@ -90,7 +90,7 @@ LIBDVDCSS_EXPORT int dvdcss_close(dvdcss_t);
 LIBDVDCSS_EXPORT int dvdcss_seek(dvdcss_t, int i_blocks, int i_flags);
 LIBDVDCSS_EXPORT int dvdcss_read(dvdcss_t, void *p_buffer, int i_blocks,
                                  int i_flags);
-LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t, void *p_iovec, int i_blocks,
+LIBDVDCSS_EXPORT int dvdcss_readv(dvdcss_t, void *p_iovec, int i_iovecs,
                                   int i_flags);
 LIBDVDCSS_EXPORT const char *dvdcss_error(const dvdcss_t);
 

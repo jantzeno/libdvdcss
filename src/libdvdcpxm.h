@@ -53,13 +53,13 @@ inline constexpr int CPRM_MKB_SIZE = 16 * CPRM_MKB_PACK_SIZE - 16;
 
 inline constexpr uint8_t CCI_BYTE = 0x00;
 
-typedef struct {
+struct device_key_t {
   uint8_t col;
   uint16_t row;
   uint64_t key;
-} device_key_t;
+};
 
-typedef struct {
+struct cprm_media_id_t {
   struct {
     uint8_t type : 4;
     uint8_t reserved : 4;
@@ -68,17 +68,17 @@ typedef struct {
   } id_media;
 
   uint8_t dvd_mac[10];
-} cprm_media_id_t;
+};
 
-typedef struct {
+struct cprm_mkb_desc_t {
   uint8_t mkb_hash[8];
   uint8_t reserved[8];
-} cprm_mkb_desc_t;
+};
 
-typedef struct {
+struct cprm_mkb_t {
   cprm_mkb_desc_t mkb_desc;
   uint8_t mkb[CPRM_MKB_SIZE];
-} cprm_mkb_t;
+};
 
 /* used to clear dvdcpxm structures, including cache */
 int dvdcpxm_close_internal(dvdcss_t) noexcept;

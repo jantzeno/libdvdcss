@@ -1,0 +1,15 @@
+EXPORTS
+    dvdcss_open
+    dvdcss_open_stream
+    dvdcss_close
+    dvdcss_seek
+    dvdcss_read
+    dvdcss_readv
+    dvdcss_error
+    dvdcss_is_scrambled
+    dvdcss_get_encryption_type
+    dvdcpxm_init
+    dvdcpxm_close
+    dvdcpxm_seek
+    dvdcpxm_read
+    dvdcpxm_readv

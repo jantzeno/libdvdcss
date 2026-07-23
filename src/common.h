@@ -66,11 +66,4 @@ typedef __int64 off_t;
 
 #endif /* defined( _WIN32 ) */
 
-#ifdef __ANDROID__
-#undef lseek
-#define lseek lseek64
-#undef off_t
-#define off_t off64_t
-#endif /* __ANDROID__ */
-
 #endif /* DVDCSS_COMMON_H */

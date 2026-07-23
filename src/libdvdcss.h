@@ -24,9 +24,13 @@
 #ifndef DVDCSS_LIBDVDCSS_H
 #define DVDCSS_LIBDVDCSS_H
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <new>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <config.h>
@@ -53,6 +57,29 @@ enum class dvdcss_method {
 
 void print_error(dvdcss_t, const char *, ...) noexcept;
 void print_debug(const dvdcss_t, const char *, ...) noexcept;
+
+namespace detail {
+
+void set_boundary_error(dvdcss_t, const char *) noexcept;
+
+template <typename Operation>
+int invoke_c_api(dvdcss_t context, Operation &&operation) noexcept {
+  if (context == nullptr) {
+    return -1;
+  }
+
+  try {
+    return std::forward<Operation>(operation)();
+  } catch (const std::bad_alloc &) {
+    set_boundary_error(context, "out of memory");
+  } catch (...) {
+    set_boundary_error(context, "unexpected internal error");
+  }
+
+  return -1;
+}
+
+} // namespace detail
 
 } // namespace dvdcss
 
@@ -89,9 +116,9 @@ struct dvdcss_s {
 
   /* struct to be used only internally in CPXM */
   std::unique_ptr<dvdcss::cpxm_s> cpxm;
-  /* to check if this was cached, or if it was copied from cache */
-  /* will use to check if disc is being closed or if it's just a file */
-  int cpxm_was_cached;
+  /* CPXM state can be reused by another handle for the same open device. */
+  std::optional<std::pair<std::uintmax_t, std::uintmax_t>> cpxm_cache_key;
+  bool owns_cpxm_cache_entry = false;
 
   /* i_copyright read from ioctl_copyright used by cpxm to determine type of
    * encryption */
@@ -104,7 +131,8 @@ struct dvdcss_s {
 #endif /* _WIN32 */
 
   void *p_stream;
-  dvdcss_stream_cb *p_stream_cb;
+  dvdcss_stream_cb stream_cb{};
+  bool uses_stream = false;
 
   int cleanup_result = 0;
   bool cleanup_done = false;

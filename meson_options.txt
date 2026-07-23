@@ -8,4 +8,9 @@ option('enable_docs',
 option('enable_examples',
     type: 'boolean',
     value: false,
-    description: 'Build libdvdnav examples')
+    description: 'Build the csstest and dvd_region diagnostic tools')
+
+option('enable_tests',
+    type: 'boolean',
+    value: true,
+    description: 'Build and register automated libdvdcss tests')

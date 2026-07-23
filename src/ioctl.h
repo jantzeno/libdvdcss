@@ -29,6 +29,12 @@
 
 #include "common.h"
 
+#if defined(_WIN32)
+#define _WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winioctl.h>
+#endif
+
 namespace dvdcss {
 
 [[nodiscard]] int ioctl_ReadCopyright(dvdcss_fd_t, int, int *);
@@ -57,14 +63,6 @@ namespace dvdcss {
 inline constexpr int DVD_DISCKEY_SIZE = 2048;
 
 /*****************************************************************************
- * Additional types, OpenBSD-specific
- *****************************************************************************/
-#if defined(HAVE_OPENBSD_DVD_STRUCT)
-typedef union dvd_struct dvd_struct;
-typedef union dvd_authinfo dvd_authinfo;
-#endif
-
-/*****************************************************************************
  * Various DVD I/O tables
  *****************************************************************************/
 /* The generic packet command opcodes for CD/DVD Logical Units,
@@ -72,7 +70,6 @@ typedef union dvd_authinfo dvd_authinfo;
 #define GPCMD_READ_DVD_STRUCTURE 0xad
 #define GPCMD_REPORT_KEY 0xa4
 #define GPCMD_SEND_KEY 0xa3
-#ifndef DVD_STRUCT_IN_SYS_DVDIO_H
 /* DVD struct types */
 #define DVD_STRUCT_PHYSICAL 0x00
 #define DVD_STRUCT_COPYRIGHT 0x01
@@ -89,17 +86,12 @@ typedef union dvd_authinfo dvd_authinfo;
 #define DVD_REPORT_ASF 0x05
 #define DVD_SEND_RPC 0x06
 #define DVD_REPORT_RPC 0x08
-#endif /* ndef DVD_STRUCT_IN_SYS_DVDIO_H */
 #define DVDCSS_INVALIDATE_AGID 0x3f
 
 /*****************************************************************************
  * Win32-ioctl-specific
  *****************************************************************************/
 #if defined(_WIN32)
-
-#define _WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <winioctl.h>
 
 #define IOCTL_DVD_START_SESSION                                                \
   CTL_CODE(FILE_DEVICE_DVD, 0x0400, METHOD_BUFFERED, FILE_READ_ACCESS)
@@ -234,30 +226,6 @@ typedef struct SCSI_PASS_THROUGH_DIRECT {
 } SCSI_PASS_THROUGH_DIRECT, *PSCSI_PASS_THROUGH_DIRECT;
 
 #endif /* defined( _WIN32 ) */
-
-/*****************************************************************************
- * OS/2-ioctl-specific
- *****************************************************************************/
-#if defined(__OS2__)
-
-#define CDROMDISK_EXECMD 0x7A
-
-#define EX_DIRECTION_IN 0x01
-#define EX_PLAYING_CHK 0x02
-
-#pragma pack(1)
-
-struct OS2_ExecSCSICmd {
-  unsigned long id_code;      // 'CD01'
-  unsigned short data_length; // length of the Data Packet
-  unsigned short cmd_length;  // length of the Command Buffer
-  unsigned short flags;       // flags
-  unsigned char command[16];  // Command Buffer for SCSI command
-};
-
-#pragma pack()
-
-#endif /* defined( __OS2__ ) */
 
 } // namespace dvdcss
 

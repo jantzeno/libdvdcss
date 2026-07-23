@@ -28,10 +28,11 @@
 #include "common.h"
 #include "config.h"
 
-#include <functional>
+#include <cstddef>
+#include <iterator>
+#include <limits>
+#include <optional>
 #include <span>
-#include <stddef.h>
-#include <vector>
 
 /*****************************************************************************
  * iovec structure: vectored data entry
@@ -85,43 +86,85 @@ private:
   Kind kind_{Kind::none};
 };
 
-using DeviceSeek = std::function<int(dvdcss_t, int)>;
-using DeviceRead = std::function<int(dvdcss_t, void *, int)>;
+using DeviceSeek = int (*)(dvdcss_t, int);
+using DeviceRead = int (*)(dvdcss_t, void *, int);
 using ScatterBuffer = std::span<uint8_t>;
-using ScatterBuffers = std::span<ScatterBuffer>;
-using DeviceReadv = std::function<int(dvdcss_t, ScatterBuffers)>;
 
-[[nodiscard]] inline std::vector<ScatterBuffer>
-make_scatter_buffers(struct iovec *iovecs, int count) {
+class ScatterBuffers {
+public:
+  class iterator {
+  public:
+    using difference_type = std::ptrdiff_t;
+    using value_type = ScatterBuffer;
+    using iterator_category = std::forward_iterator_tag;
+
+    [[nodiscard]] value_type operator*() const noexcept {
+      return {static_cast<uint8_t *>(current_->iov_base), current_->iov_len};
+    }
+
+    iterator &operator++() noexcept {
+      ++current_;
+      return *this;
+    }
+
+    [[nodiscard]] bool operator==(const iterator &) const noexcept = default;
+
+  private:
+    friend class ScatterBuffers;
+    explicit iterator(struct iovec *current) noexcept : current_(current) {}
+    struct iovec *current_;
+  };
+
+  ScatterBuffers() noexcept = default;
+  ScatterBuffers(struct iovec *iovecs, std::size_t count) noexcept
+      : iovecs_(iovecs), count_(count) {}
+
+  [[nodiscard]] bool empty() const noexcept { return count_ == 0; }
+  [[nodiscard]] std::size_t size() const noexcept { return count_; }
+  [[nodiscard]] struct iovec *raw_data() const noexcept { return iovecs_; }
+
+  [[nodiscard]] std::optional<std::size_t> byte_size() const noexcept {
+    std::size_t total = 0;
+    for (std::size_t index = 0; index < count_; ++index) {
+      const auto &entry = iovecs_[index];
+      if ((entry.iov_base == nullptr && entry.iov_len != 0) ||
+          entry.iov_len > std::numeric_limits<std::size_t>::max() - total) {
+        return std::nullopt;
+      }
+      total += entry.iov_len;
+    }
+    return total;
+  }
+
+  [[nodiscard]] ScatterBuffer operator[](std::size_t index) const noexcept {
+    return {static_cast<uint8_t *>(iovecs_[index].iov_base),
+            iovecs_[index].iov_len};
+  }
+
+  [[nodiscard]] iterator begin() const noexcept { return iterator{iovecs_}; }
+  [[nodiscard]] iterator end() const noexcept {
+    return iterator{count_ == 0 ? iovecs_ : iovecs_ + count_};
+  }
+
+private:
+  struct iovec *iovecs_ = nullptr;
+  std::size_t count_ = 0;
+};
+
+using DeviceReadv = int (*)(dvdcss_t, ScatterBuffers);
+
+[[nodiscard]] inline ScatterBuffers make_scatter_buffers(struct iovec *iovecs,
+                                                         int count) noexcept {
   if (count <= 0) {
     return {};
   }
-
-  std::vector<ScatterBuffer> buffers;
-  buffers.reserve(static_cast<size_t>(count));
-  for (int index = 0; index < count; ++index) {
-    buffers.emplace_back(static_cast<uint8_t *>(iovecs[index].iov_base),
-                         iovecs[index].iov_len);
-  }
-
-  return buffers;
-}
-
-[[nodiscard]] inline std::vector<struct iovec>
-make_raw_iovecs(ScatterBuffers buffers) {
-  std::vector<struct iovec> iovecs;
-  iovecs.reserve(buffers.size());
-  for (auto buffer : buffers) {
-    iovecs.push_back({buffer.data(), buffer.size()});
-  }
-
-  return iovecs;
+  return {iovecs, static_cast<std::size_t>(count)};
 }
 
 struct DeviceStrategy {
-  DeviceSeek seek;
-  DeviceRead read;
-  DeviceReadv readv;
+  DeviceSeek seek = nullptr;
+  DeviceRead read = nullptr;
+  DeviceReadv readv = nullptr;
 };
 
 /*****************************************************************************

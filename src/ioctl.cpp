@@ -33,63 +33,26 @@
 #include "config.h"
 
 #include <array>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <memory>
 #include <span>
 #include <sys/types.h>
 
 #if defined(_WIN32)
 #include <windows.h>
 #include <winioctl.h>
-#elif defined(__OS2__)
-#define INCL_DOSFILEMGR
-#define INCL_DOSDEVICES
-#define INCL_DOSDEVIOCTL
-#define INCL_DOSERRORS
-#include <os2.h>
-#include <sys/ioctl.h>
 #else
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #endif
 
-#ifdef DVD_STRUCT_IN_SYS_CDIO_H
-#include <sys/cdio.h>
-#endif
-#ifdef DVD_STRUCT_IN_SYS_DVDIO_H
-#include <sys/dvdio.h>
-#endif
 #ifdef DVD_STRUCT_IN_LINUX_CDROM_H
 #include <linux/cdrom.h>
 #endif
 #ifdef HAVE_SCSI_SG_H
 #include <scsi/sg.h>
 #endif
-#ifdef HAVE_CAM_SCSI_SCSI_SG_H
-#include <cam/scsi/scsi_sg.h>
-#endif
-#ifdef DVD_STRUCT_IN_DVD_H
-#include <dvd.h>
-#endif
-#ifdef __HAIKU__
-#include <malloc.h>
-#include <scsi.h>
-#endif
-#ifdef SOLARIS_USCSI
-#include <dlfcn.h>
-#include <stropts.h>
-#include <sys/scsi/impl/uscsi.h>
-#include <sys/scsi/scsi_types.h>
-#include <unistd.h>
-#endif
 #ifdef DARWIN_DVD_IOCTL
 #include <IOKit/storage/IODVDMediaBSDClient.h>
-#endif
-#ifdef __QNXNTO__
-#include <sys/dcmd_cam.h>
-#include <sys/mman.h>
 #endif
 
 #include "common.h"
@@ -111,63 +74,11 @@ static inline HANDLE dvdcss_to_handle(dvdcss_fd_t fd) {
 }
 #endif
 
-/*****************************************************************************
- * Local prototypes, OS-specific
- *****************************************************************************/
-#if defined(__HAIKU__)
-static void BeInitRDC(raw_device_command *, int);
-#elif defined(SOLARIS_USCSI)
-static void SolarisInitUSCSI(struct uscsi_cmd *p_sc, int i_type);
-static int SolarisSendUSCSI(dvdcss_fd_t fd, struct uscsi_cmd *p_sc);
-#elif defined(_WIN32)
+#if defined(_WIN32)
 static void WinInitSPTD(SCSI_PASS_THROUGH_DIRECT *, int);
-#elif defined(__QNXNTO__)
-static void QNXInitCPT(CAM_PASS_THRU *, int);
-#elif defined(__OS2__)
-static void OS2InitSDC(struct OS2_ExecSCSICmd *, int);
 #endif
 
-#if defined(__HAIKU__)
-template <std::size_t Size> struct HaikuRawDeviceCommandRequest {
-  static constexpr int kTransferSize = static_cast<int>(Size);
-
-  raw_device_command command{};
-  std::array<uint8_t, Size + 1> buffer{};
-
-  explicit HaikuRawDeviceCommandRequest(int type) {
-    command.data = reinterpret_cast<char *>(buffer.data());
-    command.data_length = kTransferSize;
-    BeInitRDC(&command, type);
-  }
-
-  HaikuRawDeviceCommandRequest(const HaikuRawDeviceCommandRequest &) = delete;
-  HaikuRawDeviceCommandRequest &
-  operator=(const HaikuRawDeviceCommandRequest &) = delete;
-  HaikuRawDeviceCommandRequest(HaikuRawDeviceCommandRequest &&) = delete;
-  HaikuRawDeviceCommandRequest &
-  operator=(HaikuRawDeviceCommandRequest &&) = delete;
-};
-#elif defined(SOLARIS_USCSI)
-template <std::size_t Size> struct SolarisUscsiRequest {
-  static constexpr int kTransferSize = static_cast<int>(Size);
-
-  struct uscsi_cmd command{};
-  union scsi_cdb cdb{};
-  std::array<uint8_t, Size + 1> buffer{};
-
-  explicit SolarisUscsiRequest(int type) {
-    command.uscsi_cdb = reinterpret_cast<caddr_t>(&cdb);
-    command.uscsi_bufaddr = reinterpret_cast<caddr_t>(buffer.data());
-    command.uscsi_buflen = kTransferSize;
-    SolarisInitUSCSI(&command, type);
-  }
-
-  SolarisUscsiRequest(const SolarisUscsiRequest &) = delete;
-  SolarisUscsiRequest &operator=(const SolarisUscsiRequest &) = delete;
-  SolarisUscsiRequest(SolarisUscsiRequest &&) = delete;
-  SolarisUscsiRequest &operator=(SolarisUscsiRequest &&) = delete;
-};
-#elif defined(DARWIN_DVD_IOCTL)
+#if defined(DARWIN_DVD_IOCTL)
 template <typename DkDvdType, typename BufferType>
 struct DarwinDvdIoctlRequest {
   DkDvdType command{};
@@ -184,68 +95,6 @@ struct DarwinDvdIoctlRequest {
   DarwinDvdIoctlRequest &operator=(const DarwinDvdIoctlRequest &) = delete;
   DarwinDvdIoctlRequest(DarwinDvdIoctlRequest &&) = delete;
   DarwinDvdIoctlRequest &operator=(DarwinDvdIoctlRequest &&) = delete;
-};
-#elif defined(__QNXNTO__)
-struct QnxCamPassThruDeleter {
-  void operator()(CAM_PASS_THRU *command) const noexcept { std::free(command); }
-};
-
-template <std::size_t Size> class QnxCamPassThruRequest {
-public:
-  static constexpr int kTransferSize = static_cast<int>(Size);
-
-  explicit QnxCamPassThruRequest(int type)
-      : struct_size_(static_cast<int>(sizeof(CAM_PASS_THRU) + Size)),
-        command_(static_cast<CAM_PASS_THRU *>(std::malloc(struct_size_))) {
-    if (!command_) {
-      return;
-    }
-
-    memset(command_.get(), 0, struct_size_);
-    command_->cam_data_ptr = sizeof(CAM_PASS_THRU);
-    command_->cam_dxfer_len = kTransferSize;
-    QNXInitCPT(command_.get(), type);
-  }
-
-  CAM_PASS_THRU *command() noexcept { return command_.get(); }
-
-  uint8_t *buffer() noexcept {
-    if (!command_) {
-      return nullptr;
-    }
-
-    return reinterpret_cast<uint8_t *>(command_.get()) + sizeof(CAM_PASS_THRU);
-  }
-
-  int struct_size() const noexcept { return struct_size_; }
-
-  QnxCamPassThruRequest(const QnxCamPassThruRequest &) = delete;
-  QnxCamPassThruRequest &operator=(const QnxCamPassThruRequest &) = delete;
-  QnxCamPassThruRequest(QnxCamPassThruRequest &&) = delete;
-  QnxCamPassThruRequest &operator=(QnxCamPassThruRequest &&) = delete;
-
-private:
-  int struct_size_;
-  std::unique_ptr<CAM_PASS_THRU, QnxCamPassThruDeleter> command_;
-};
-#elif defined(__OS2__)
-template <std::size_t Size> struct Os2ScsiCommandRequest {
-  static constexpr int kTransferSize = static_cast<int>(Size);
-
-  struct OS2_ExecSCSICmd command{};
-  std::array<uint8_t, Size + 1> buffer{};
-  unsigned long parameter_length = sizeof(command);
-  unsigned long data_length = 0;
-
-  explicit Os2ScsiCommandRequest(int type) {
-    command.data_length = kTransferSize;
-    OS2InitSDC(&command, type);
-  }
-
-  Os2ScsiCommandRequest(const Os2ScsiCommandRequest &) = delete;
-  Os2ScsiCommandRequest &operator=(const Os2ScsiCommandRequest &) = delete;
-  Os2ScsiCommandRequest(Os2ScsiCommandRequest &&) = delete;
-  Os2ScsiCommandRequest &operator=(Os2ScsiCommandRequest &&) = delete;
 };
 #endif
 
@@ -264,46 +113,6 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
   i_ret = ioctl(i_fd, DVD_READ_STRUCT, &dvd);
 
   *pi_copyright = dvd.copyright.cpst;
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_struct dvd = {0};
-
-  dvd.format = DVD_STRUCT_COPYRIGHT;
-  dvd.layer_num = i_layer;
-
-  i_ret = ioctl(i_fd, DVDIOCREADSTRUCTURE, &dvd);
-
-  *pi_copyright = dvd.cpst;
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[6] = i_layer;
-  rdc.command[7] = DVD_STRUCT_COPYRIGHT;
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  *pi_copyright = p_buffer[4];
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[6] = i_layer;
-  rs_cdb.cdb_opaque[7] = DVD_STRUCT_COPYRIGHT;
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  *pi_copyright = p_buffer[4];
-  /* s->copyright.rmi = p_buffer[ 5 ]; */
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_read_structure_t, DVDCopyrightInfo> request{
@@ -346,39 +155,6 @@ int ioctl_ReadCopyright(dvdcss_fd_t i_fd, int i_layer, int *pi_copyright) {
     *pi_copyright = p_buffer[4];
   }
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[6] = i_layer;
-  p_cpt->cam_cdb[7] = DVD_STRUCT_COPYRIGHT;
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  *pi_copyright = p_buffer[4];
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<8> request{GPCMD_READ_DVD_STRUCTURE};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[6] = i_layer;
-  sdc.command[7] = DVD_STRUCT_COPYRIGHT;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  *pi_copyright = p_buffer[4];
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -410,55 +186,6 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
   }
 
   memcpy(p_key.data(), dvd.disckey.value, DVD_DISCKEY_SIZE);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_struct dvd = {0};
-
-  dvd.format = DVD_STRUCT_DISCKEY;
-  dvd.agid = *pi_agid;
-
-  i_ret = ioctl(i_fd, DVDIOCREADSTRUCTURE, &dvd);
-
-  if (i_ret < 0) {
-    return i_ret;
-  }
-
-  memcpy(p_key.data(), dvd.data, DVD_DISCKEY_SIZE);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<DVD_DISCKEY_SIZE + 4> request{
-      GPCMD_READ_DVD_STRUCTURE};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[7] = DVD_STRUCT_DISCKEY;
-  rdc.command[10] = *pi_agid << 6;
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  if (i_ret < 0) {
-    return i_ret;
-  }
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[7] = DVD_STRUCT_DISCKEY;
-  rs_cdb.cdb_opaque[10] = *pi_agid << 6;
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-    return i_ret;
-  }
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_read_structure_t, DVDDiscKeyInfo> request{
@@ -493,43 +220,6 @@ int ioctl_ReadDiscKey(dvdcss_fd_t i_fd, const int *pi_agid,
 
   memcpy(p_key.data(), key->KeyData, DVD_DISCKEY_SIZE);
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[7] = DVD_STRUCT_DISCKEY;
-  p_cpt->cam_cdb[10] = *pi_agid << 6;
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<DVD_DISCKEY_SIZE + 4> request{GPCMD_READ_DVD_STRUCTURE};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[7] = DVD_STRUCT_DISCKEY;
-  sdc.command[10] = *pi_agid << 6;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  if (i_ret < 0) {
-    return i_ret;
-  }
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_DISCKEY_SIZE);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -558,57 +248,6 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
   memcpy(p_key.data(), auth_info.lstk.title_key, DVD_KEY_SIZE);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_TITLE_KEY;
-  auth_info.agid = *pi_agid;
-  auth_info.lba = i_pos;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<12> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[2] = (i_pos >> 24) & 0xff;
-  rdc.command[3] = (i_pos >> 16) & 0xff;
-  rdc.command[4] = (i_pos >> 8) & 0xff;
-  rdc.command[5] = (i_pos) & 0xff;
-  rdc.command[10] = DVD_REPORT_TITLE_KEY | (*pi_agid << 6);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<12> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[2] = (i_pos >> 24) & 0xff;
-  rs_cdb.cdb_opaque[3] = (i_pos >> 16) & 0xff;
-  rs_cdb.cdb_opaque[4] = (i_pos >> 8) & 0xff;
-  rs_cdb.cdb_opaque[5] = (i_pos) & 0xff;
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_TITLE_KEY | (*pi_agid << 6);
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  /* Do we want to return the cp_sec flag perhaps? */
-  /* a->lstk.cpm    = (buf[ 4 ] >> 7) & 1; */
-  /* a->lstk.cp_sec = (buf[ 4 ] >> 6) & 1; */
-  /* a->lstk.cgms   = (buf[ 4 ] >> 4) & 3; */
-
-  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDTitleKeyInfo> request{
@@ -643,45 +282,6 @@ int ioctl_ReadTitleKey(dvdcss_fd_t i_fd, const int *pi_agid, int i_pos,
 
   memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<12> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[2] = (i_pos >> 24) & 0xff;
-  p_cpt->cam_cdb[3] = (i_pos >> 16) & 0xff;
-  p_cpt->cam_cdb[4] = (i_pos >> 8) & 0xff;
-  p_cpt->cam_cdb[5] = (i_pos) & 0xff;
-  p_cpt->cam_cdb[10] = DVD_REPORT_TITLE_KEY | (*pi_agid << 6);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<12> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[2] = (i_pos >> 24) & 0xff;
-  sdc.command[3] = (i_pos >> 16) & 0xff;
-  sdc.command[4] = (i_pos >> 8) & 0xff;
-  sdc.command[5] = (i_pos) & 0xff;
-  sdc.command[10] = DVD_REPORT_TITLE_KEY | (*pi_agid << 6);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  memcpy(p_key.data(), p_buffer + 5, DVD_KEY_SIZE);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -706,43 +306,6 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
 
   *pi_agid = auth_info.lsa.agid;
 
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_AGID;
-  auth_info.agid = *pi_agid;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  *pi_agid = auth_info.agid;
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_REPORT_AGID | (*pi_agid << 6);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  *pi_agid = p_buffer[7] >> 6;
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_AGID | (*pi_agid << 6);
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  *pi_agid = p_buffer[7] >> 6;
-
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDAuthenticationGrantIDInfo>
       request{kDVDKeyFormatAGID_CSS};
@@ -763,37 +326,6 @@ int ioctl_ReportAgid(dvdcss_fd_t i_fd, int *pi_agid) {
                           4, pi_agid, sizeof(*pi_agid), &tmp, NULL)
               ? 0
               : -1;
-
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_REPORT_AGID | (*pi_agid << 6);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  *pi_agid = p_buffer[7] >> 6;
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_REPORT_AGID | (*pi_agid << 6);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  *pi_agid = p_buffer[7] >> 6;
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -822,43 +354,6 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
   memcpy(p_challenge.data(), auth_info.lsc.chal, DVD_CHALLENGE_SIZE);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_CHALLENGE;
-  auth_info.agid = *pi_agid;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  memcpy(p_challenge.data(), auth_info.keychal, DVD_CHALLENGE_SIZE);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<16> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<16> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDChallengeKeyInfo> request{
@@ -893,37 +388,6 @@ int ioctl_ReportChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
 
   memcpy(p_challenge.data(), key->KeyData, DVD_CHALLENGE_SIZE);
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<16> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<16> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_REPORT_CHALLENGE | (*pi_agid << 6);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  memcpy(p_challenge.data(), p_buffer + 4, DVD_CHALLENGE_SIZE);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -946,43 +410,6 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
   *pi_asf = auth_info.lsasf.asf;
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_ASF;
-  auth_info.asf = *pi_asf;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  *pi_asf = auth_info.asf;
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_REPORT_ASF;
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  *pi_asf = p_buffer[7] & 1;
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_ASF;
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  *pi_asf = p_buffer[7] & 1;
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDAuthenticationSuccessFlagInfo>
@@ -1019,37 +446,6 @@ int ioctl_ReportASF(dvdcss_fd_t i_fd, int *pi_asf) {
   keyData = reinterpret_cast<PDVD_ASF>(key->KeyData);
   *pi_asf = keyData->SuccessFlag;
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_REPORT_ASF;
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  *pi_asf = p_buffer[7] & 1;
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_REPORT_ASF;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  *pi_asf = p_buffer[7] & 1;
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1077,43 +473,6 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
   memcpy(p_key.data(), auth_info.lsk.key, DVD_KEY_SIZE);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_KEY1;
-  auth_info.agid = *pi_agid;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  memcpy(p_key.data(), auth_info.keychal, DVD_KEY_SIZE);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<12> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<12> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDKey1Info> request{
@@ -1144,37 +503,6 @@ int ioctl_ReportKey1(dvdcss_fd_t i_fd, const int *pi_agid,
 
   memcpy(p_key.data(), key->KeyData, DVD_KEY_SIZE);
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<12> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<12> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_REPORT_KEY1 | (*pi_agid << 6);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  memcpy(p_key.data(), p_buffer + 4, DVD_KEY_SIZE);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1196,35 +524,6 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
 
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVDCSS_INVALIDATE_AGID;
-  auth_info.agid = *pi_agid;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<0> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-
-  rdc.command[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<0> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-
-  rs_cdb.cdb_opaque[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDAuthenticationGrantIDInfo>
       request{kDVDKeyFormatAGID_Invalidate};
@@ -1242,33 +541,6 @@ int ioctl_InvalidateAgid(dvdcss_fd_t i_fd, int *pi_agid) {
               ? 0
               : -1;
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<0> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<1> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.data_length = 0;
-  sdc.command[8] = 0;
-  sdc.command[9] = 0;
-
-  sdc.command[10] = DVDCSS_INVALIDATE_AGID | (*pi_agid << 6);
-
-  i_ret = DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc,
-                      sizeof(sdc), &ulParamLen, NULL, 0, &ulDataLen);
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1288,8 +560,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
     return -1;
   }
 
-#if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
-    (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
+#if defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)
   struct sg_io_hdr io_hdr = {};
   uint8_t sense[32] = {0};
   uint8_t cdb[12] = {0};
@@ -1355,23 +626,6 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
   if (i_ret == 0)
     memcpy(p_data_buffer.data(), dvd.buffer, CPRM_MEDIA_ID_SIZE);
 
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<CPRM_MEDIA_ID_SIZE + 4> request{
-      GPCMD_READ_DVD_STRUCTURE};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[7] = CPRM_STRUCT_MEDIA_ID;
-  sdc.command[10] = *p_agid << 6;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-  if (i_ret == 0)
-    memcpy(p_data_buffer.data(), p_buffer, CPRM_MEDIA_ID_SIZE);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1390,8 +644,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
     return -1;
   }
 
-#if (defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)) ||             \
-    (defined(HAVE_BSD_DVD_STRUCT) && defined(HAVE_CAM_SCSI_SCSI_SG_H))
+#if defined(HAVE_LINUX_DVD_STRUCT) && defined(HAVE_SCSI_SG_H)
   std::array<uint8_t, CPRM_MKB_PACK_SIZE + 4> sptd_buf = {};
   uint8_t cdb[12] = {0};
   uint8_t sense[32] = {0};
@@ -1469,29 +722,6 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   }
   return i_ret;
 
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<CPRM_MKB_PACK_SIZE + 4> request{
-      GPCMD_READ_DVD_STRUCTURE};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[2] = static_cast<uint8_t>((mkb_pack >> 24) & 0xFF);
-  sdc.command[3] = static_cast<uint8_t>((mkb_pack >> 16) & 0xFF);
-  sdc.command[4] = static_cast<uint8_t>((mkb_pack >> 8) & 0xFF);
-  sdc.command[5] = static_cast<uint8_t>(mkb_pack & 0xFF);
-  sdc.command[7] = CPRM_STRUCT_MKB;
-  sdc.command[10] = *p_agid << 6;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-  if (i_ret == 0) {
-    *p_total_packs = p_buffer[3];
-    memcpy(p_mkb_pack.data(), p_buffer + 4, CPRM_MKB_PACK_SIZE);
-  }
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1519,45 +749,6 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(auth_info.hsc.chal, p_challenge.data(), DVD_CHALLENGE_SIZE);
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_SEND_CHALLENGE;
-  auth_info.agid = *pi_agid;
-
-  memcpy(auth_info.keychal, p_challenge.data(), DVD_CHALLENGE_SIZE);
-
-  i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<16> request{GPCMD_SEND_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
-
-  p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<16> request{GPCMD_SEND_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
-
-  p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
-
-  if (SolarisSendUSCSI(i_fd, &sc) < 0 || sc.uscsi_status) {
-    return -1;
-  }
-
-  i_ret = 0;
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDChallengeKeyInfo> request{
@@ -1590,39 +781,6 @@ int ioctl_SendChallenge(dvdcss_fd_t i_fd, const int *pi_agid,
               ? 0
               : -1;
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<16> request{GPCMD_SEND_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
-
-  p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<16> request{GPCMD_SEND_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_SEND_CHALLENGE | (*pi_agid << 6);
-
-  p_buffer[1] = 0xe;
-  memcpy(p_buffer + 4, p_challenge.data(), DVD_CHALLENGE_SIZE);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1650,45 +808,6 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
   memcpy(auth_info.hsk.key, p_key.data(), DVD_KEY_SIZE);
 
   i_ret = ioctl(i_fd, DVD_AUTH, &auth_info);
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_SEND_KEY2;
-  auth_info.agid = *pi_agid;
-
-  memcpy(auth_info.keychal, p_key.data(), DVD_KEY_SIZE);
-
-  i_ret = ioctl(i_fd, DVDIOCSENDKEY, &auth_info);
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<12> request{GPCMD_SEND_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
-
-  p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<12> request{GPCMD_SEND_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
-
-  p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
-
-  if (SolarisSendUSCSI(i_fd, &sc) < 0 || sc.uscsi_status) {
-    return -1;
-  }
-
-  i_ret = 0;
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_send_key_t, DVDKey2Info> request{
@@ -1721,39 +840,6 @@ int ioctl_SendKey2(dvdcss_fd_t i_fd, const int *pi_agid,
               ? 0
               : -1;
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<12> request{GPCMD_SEND_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
-
-  p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<12> request{GPCMD_SEND_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_SEND_KEY2 | (*pi_agid << 6);
-
-  p_buffer[1] = 0xa;
-  memcpy(p_buffer + 4, p_key.data(), DVD_KEY_SIZE);
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
@@ -1781,48 +867,6 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
 #elif defined(HAVE_LINUX_DVD_STRUCT)
   /* FIXME: OpenBSD doesn't know this */
   i_ret = -1;
-
-#elif defined(HAVE_BSD_DVD_STRUCT)
-  struct dvd_authinfo auth_info = {0};
-
-  auth_info.format = DVD_REPORT_RPC;
-
-  i_ret = ioctl(i_fd, DVDIOCREPORTKEY, &auth_info);
-
-  *p_type = auth_info.reg_type;
-  *p_mask = auth_info.region; // ??
-  *p_scheme = auth_info.rpc_scheme;
-
-#elif defined(__HAIKU__)
-  HaikuRawDeviceCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &rdc = request.command;
-  auto *p_buffer = request.buffer.data();
-
-  rdc.command[10] = DVD_REPORT_RPC;
-
-  i_ret = ioctl(i_fd, B_RAW_DEVICE_COMMAND, &rdc, sizeof(rdc));
-
-  *p_type = p_buffer[4] >> 6;
-  *p_mask = p_buffer[5];
-  *p_scheme = p_buffer[6];
-
-#elif defined(SOLARIS_USCSI)
-  SolarisUscsiRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sc = request.command;
-  auto &rs_cdb = request.cdb;
-  auto *p_buffer = request.buffer.data();
-
-  rs_cdb.cdb_opaque[10] = DVD_REPORT_RPC;
-
-  i_ret = SolarisSendUSCSI(i_fd, &sc);
-
-  if (i_ret < 0 || sc.uscsi_status) {
-    i_ret = -1;
-  }
-
-  *p_type = p_buffer[4] >> 6;
-  *p_mask = p_buffer[5];
-  *p_scheme = p_buffer[6];
 
 #elif defined(DARWIN_DVD_IOCTL)
   DarwinDvdIoctlRequest<dk_dvd_report_key_t, DVDRegionPlaybackControlInfo>
@@ -1862,177 +906,12 @@ int ioctl_ReportRPC(dvdcss_fd_t i_fd, int *p_type, int *p_mask, int *p_scheme) {
   *p_mask = keyData->RegionMask;
   *p_scheme = keyData->RpcScheme;
 
-#elif defined(__QNXNTO__)
-  QnxCamPassThruRequest<8> request{GPCMD_REPORT_KEY};
-  auto *p_cpt = request.command();
-  auto *p_buffer = request.buffer();
-  const int structSize = request.struct_size();
-
-  if (!p_cpt) {
-    return -1;
-  }
-
-  p_cpt->cam_cdb[10] = DVD_REPORT_RPC;
-
-  i_ret = devctl(i_fd, DCMD_CAM_PASS_THRU, p_cpt, structSize, NULL);
-
-  *p_type = p_buffer[4] >> 6;
-  *p_mask = p_buffer[5];
-  *p_scheme = p_buffer[6];
-
-#elif defined(__OS2__)
-  Os2ScsiCommandRequest<8> request{GPCMD_REPORT_KEY};
-  auto &sdc = request.command;
-  auto *p_buffer = request.buffer.data();
-  auto &ulParamLen = request.parameter_length;
-  auto &ulDataLen = request.data_length;
-
-  sdc.command[10] = DVD_REPORT_RPC;
-
-  i_ret =
-      DosDevIOCtl(i_fd, IOCTL_CDROMDISK, CDROMDISK_EXECMD, &sdc, sizeof(sdc),
-                  &ulParamLen, p_buffer, sizeof(p_buffer), &ulDataLen);
-
-  *p_type = p_buffer[4] >> 6;
-  *p_mask = p_buffer[5];
-  *p_scheme = p_buffer[6];
-
 #else
 #error "DVD ioctls are unavailable on this system"
 
 #endif
   return i_ret;
 }
-
-/* Local prototypes */
-
-#if defined(__HAIKU__)
-/*****************************************************************************
- * BeInitRDC: initialize a RDC structure for the Haiku kernel
- *****************************************************************************
- * This function initializes a Haiku raw device command structure for future
- * use, either a read command or a write command.
- *****************************************************************************/
-static void BeInitRDC(raw_device_command *p_rdc, int i_type) {
-  memset(p_rdc->data, 0, p_rdc->data_length);
-
-  switch (i_type) {
-  case GPCMD_SEND_KEY:
-    /* leave the flags to 0 */
-    break;
-
-  case GPCMD_READ_DVD_STRUCTURE:
-  case GPCMD_REPORT_KEY:
-    p_rdc->flags = B_RAW_DEVICE_DATA_IN;
-    break;
-  }
-
-  p_rdc->command[0] = i_type;
-
-  p_rdc->command[8] = (p_rdc->data_length >> 8) & 0xff;
-  p_rdc->command[9] = p_rdc->data_length & 0xff;
-  p_rdc->command_length = 12;
-
-  p_rdc->sense_data = NULL;
-  p_rdc->sense_data_length = 0;
-
-  p_rdc->timeout = 1000000;
-}
-#endif
-
-#if defined(SOLARIS_USCSI)
-/*****************************************************************************
- * SolarisInitUSCSI: initialize a USCSICMD structure for the Solaris kernel
- *****************************************************************************
- * This function initializes a Solaris userspace SCSI command structure for
- * future use, either a read command or a write command.
- *****************************************************************************/
-static void SolarisInitUSCSI(struct uscsi_cmd *p_sc, int i_type) {
-  union scsi_cdb *rs_cdb;
-  memset(p_sc->uscsi_cdb, 0, sizeof(union scsi_cdb));
-  memset(p_sc->uscsi_bufaddr, 0, p_sc->uscsi_buflen);
-
-  switch (i_type) {
-  case GPCMD_SEND_KEY:
-    p_sc->uscsi_flags = USCSI_ISOLATE | USCSI_WRITE;
-    break;
-
-  case GPCMD_READ_DVD_STRUCTURE:
-  case GPCMD_REPORT_KEY:
-    p_sc->uscsi_flags = USCSI_ISOLATE | USCSI_READ;
-    break;
-  }
-
-  rs_cdb = reinterpret_cast<union scsi_cdb *>(p_sc->uscsi_cdb);
-
-  rs_cdb->scc_cmd = i_type;
-
-  rs_cdb->cdb_opaque[8] = (p_sc->uscsi_buflen >> 8) & 0xff;
-  rs_cdb->cdb_opaque[9] = p_sc->uscsi_buflen & 0xff;
-  p_sc->uscsi_cdblen = 12;
-  p_sc->uscsi_timeout = 15;
-}
-
-/*****************************************************************************
- * SolarisSendUSCSI: send a USCSICMD structure to the Solaris kernel
- * for execution
- *****************************************************************************
- * When available, this function uses the function smedia_uscsi_cmd()
- * from Solaris' libsmedia library (Solaris 9 or newer) to execute the
- * USCSI command.  smedia_uscsi_cmd() allows USCSI commands for
- * non-root users on removable media devices on Solaris 9; sending the
- * USCSI command directly to the device using the USCSICMD ioctl fails
- * with an EPERM error on Solaris 9.
- *
- * The code will fall back to the USCSICMD ioctl method, when
- * libsmedia.so is not available or does not export the
- * smedia_uscsi_cmd() function (on Solaris releases up to and including
- * Solaris 8). Fortunately, on these old releases non-root users are
- * allowed to perform USCSICMD ioctls on removable media devices.
- *****************************************************************************/
-static int SolarisSendUSCSI(dvdcss_fd_t i_fd, struct uscsi_cmd *p_sc) {
-  void *p_handle;
-
-  /* We use static variables to keep track of the libsmedia symbols, which
-   * is harmless even in a multithreaded program because the library and
-   * its symbols will always be mapped at the same address. */
-  static int b_tried = 0;
-  static int b_have_sm = 0;
-  static void *(*p_get_handle)(int32_t);
-  static int (*p_uscsi_cmd)(void *, struct uscsi_cmd *);
-  static int (*p_release_handle)(void *);
-
-  if (!b_tried) {
-    void *p_lib;
-
-    p_lib = dlopen("libsmedia.so", RTLD_NOW);
-    if (p_lib) {
-      p_get_handle = reinterpret_cast<void *(*)(int32_t)>(
-          dlsym(p_lib, "smedia_get_handle"));
-      p_uscsi_cmd = reinterpret_cast<int (*)(void *, struct uscsi_cmd *)>(
-          dlsym(p_lib, "smedia_uscsi_cmd"));
-      p_release_handle = reinterpret_cast<int (*)(void *)>(
-          dlsym(p_lib, "smedia_release_handle"));
-
-      if (p_get_handle && p_uscsi_cmd && p_release_handle) {
-        b_have_sm = 1;
-      } else {
-        dlclose(p_lib);
-      }
-    }
-
-    b_tried = 1;
-  }
-
-  if (b_have_sm && (p_handle = p_get_handle(i_fd))) {
-    int i_ret = p_uscsi_cmd(p_handle, p_sc);
-    p_release_handle(p_handle);
-    return i_ret;
-  }
-
-  return ioctl(i_fd, USCSICMD, p_sc);
-}
-#endif /* defined( SOLARIS_USCSI ) */
 
 #if defined(_WIN32)
 /*****************************************************************************
@@ -2063,61 +942,5 @@ static void WinInitSPTD(SCSI_PASS_THROUGH_DIRECT *p_sptd, int i_type) {
   p_sptd->TimeOutValue = 2;
 }
 #endif /* defined( _WIN32 ) */
-
-#if defined(__QNXNTO__)
-/*****************************************************************************
- * QNXInitCPT: initialize a CPT structure for QNX Neutrino
- *****************************************************************************
- * This function initializes a cpt command structure for future use,
- * either a read command or a write command.
- *****************************************************************************/
-static void QNXInitCPT(CAM_PASS_THRU *p_cpt, int i_type) {
-  switch (i_type) {
-  case GPCMD_SEND_KEY:
-    p_cpt->cam_flags = CAM_DIR_OUT;
-    break;
-
-  case GPCMD_READ_DVD_STRUCTURE:
-  case GPCMD_REPORT_KEY:
-    p_cpt->cam_flags = CAM_DIR_IN;
-    break;
-  }
-
-  p_cpt->cam_cdb[0] = i_type;
-
-  p_cpt->cam_cdb[8] = (p_cpt->cam_dxfer_len >> 8) & 0xff;
-  p_cpt->cam_cdb[9] = p_cpt->cam_dxfer_len & 0xff;
-  p_cpt->cam_cdb_len = 12;
-
-  p_cpt->cam_timeout = CAM_TIME_DEFAULT;
-}
-#endif /* defined( __QNXNTO__ ) */
-
-#if defined(__OS2__)
-/*****************************************************************************
- * OS2InitSDC: initialize a SDC structure for the Execute SCSI-command
- *****************************************************************************
- * This function initializes an OS/2 'execute SCSI command' structure for
- * future use, either a read command or a write command.
- *****************************************************************************/
-static void OS2InitSDC(struct OS2_ExecSCSICmd *p_sdc, int i_type) {
-  switch (i_type) {
-  case GPCMD_SEND_KEY:
-    p_sdc->flags = 0;
-    break;
-
-  case GPCMD_READ_DVD_STRUCTURE:
-  case GPCMD_REPORT_KEY:
-    p_sdc->flags = EX_DIRECTION_IN;
-    break;
-  }
-
-  p_sdc->command[0] = i_type;
-  p_sdc->command[8] = (p_sdc->data_length >> 8) & 0xff;
-  p_sdc->command[9] = p_sdc->data_length & 0xff;
-  p_sdc->id_code = 0x31304443; // 'CD01'
-  p_sdc->cmd_length = 12;
-}
-#endif /* defined( __OS2__ ) */
 
 } // namespace dvdcss

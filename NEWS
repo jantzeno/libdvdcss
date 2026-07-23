@@ -2,6 +2,10 @@
 Changes between 1.5.0 and 1.6.0:
 --------------------------------
 
+  * Complete the implementation migration to C++23 while preserving the C ABI.
+  * Limit supported targets to Linux, Windows, and macOS on x86-64/AArch64.
+  * Add deterministic C-boundary error handling, strict symbol exports,
+    synchronized CPXM caching, and automated C/stream/ABI regression tests.
   * Add dvdcss_get_encryption_type function to the public API
     This allows applications to query the disc's copyright protection system
     type (CPST) directly from the drive, enabling better distinction between

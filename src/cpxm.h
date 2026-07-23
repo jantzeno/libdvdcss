@@ -62,16 +62,16 @@ template <typename T>
   return value;
 }
 
-typedef struct cpxm {
+struct cpxm_s {
   uint64_t media_key;
   uint64_t id_album;
   uint64_t id_media;
   uint64_t vr_k_t;
   uint64_t apstb;
-} cpxm_s;
+};
 
 /* for persistance */
-typedef cpxm_s *p_cpxm;
+using p_cpxm = cpxm_s *;
 
 /* cpxm uses the same css authentification method when using a usb dvd drive */
 [[nodiscard]] int cppm_set_id_album(dvdcss_t dvdcss);

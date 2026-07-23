@@ -62,8 +62,7 @@ static void write_stderr(std::string_view message) noexcept {
   }
 }
 
-static std::string format_printf_message(const char *psz_string,
-                                         va_list args) noexcept {
+static std::string format_printf_message(const char *psz_string, va_list args) {
   if (psz_string == nullptr) {
     return {};
   }
@@ -97,7 +96,7 @@ static void print_message(const char *prefix,
 }
 
 static void vprint_error(dvdcss_t dvdcss, const char *psz_string,
-                         va_list args) noexcept {
+                         va_list args) {
   const std::string formatted_message = format_printf_message(psz_string, args);
 
   if (dvdcss->b_errors) {
@@ -108,7 +107,7 @@ static void vprint_error(dvdcss_t dvdcss, const char *psz_string,
 }
 
 static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
-                         va_list args) noexcept {
+                         va_list args) {
   const std::string formatted_message = format_printf_message(psz_string, args);
 
   if (dvdcss->b_debug) {
@@ -118,6 +117,19 @@ static void vprint_debug(const dvdcss_t dvdcss, const char *psz_string,
 
 } // namespace detail
 
+void detail::set_boundary_error(dvdcss_t dvdcss, const char *message) noexcept {
+  if (dvdcss == nullptr) {
+    return;
+  }
+
+  try {
+    dvdcss->psz_error =
+        message != nullptr ? message : "unexpected internal error";
+  } catch (...) {
+    /* Preserve the previous stable error string if allocation fails. */
+  }
+}
+
 /*****************************************************************************
  * Error messages
  *****************************************************************************/
@@ -125,7 +137,12 @@ void print_error(dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
-  detail::vprint_error(dvdcss, psz_string, args);
+  try {
+    detail::vprint_error(dvdcss, psz_string, args);
+  } catch (...) {
+    detail::set_boundary_error(dvdcss, "error reporting failure");
+    detail::write_stderr("libdvdcss error: error reporting failure\n");
+  }
   va_end(args);
 }
 
@@ -136,7 +153,11 @@ void print_debug(const dvdcss_t dvdcss, const char *psz_string, ...) noexcept {
   va_list args;
 
   va_start(args, psz_string);
-  detail::vprint_debug(dvdcss, psz_string, args);
+  try {
+    detail::vprint_debug(dvdcss, psz_string, args);
+  } catch (...) {
+    detail::write_stderr("libdvdcss debug: error reporting failure\n");
+  }
   va_end(args);
 }
 

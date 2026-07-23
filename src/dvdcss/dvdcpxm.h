@@ -87,7 +87,7 @@ LIBDVDCSS_EXPORT int dvdcpxm_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
 LIBDVDCSS_EXPORT int dvdcpxm_seek(dvdcss_t dvdcss, int i_blocks, int i_flags);
 
 /* Uses dvdcpxm unencrypt instead of dvdcss unsramble */
-LIBDVDCSS_EXPORT int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
+LIBDVDCSS_EXPORT int dvdcpxm_readv(dvdcss_t dvdcss, void *p_iovec, int i_iovecs,
                                    int i_flags);
 
 #ifdef __cplusplus

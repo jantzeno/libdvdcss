@@ -56,14 +56,6 @@
 #include <paths.h>
 #endif
 
-#ifdef __OS2__
-#define INCL_DOS
-#define INCL_DOSDEVIOCTL
-#include <fcntl.h> /* O_BINARY  */
-#include <io.h>    /* setmode() */
-#include <os2.h>
-#endif
-
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -88,15 +80,14 @@ static int dvdcss_close_handle(dvdcss_fd_t fd) noexcept {
 
 static int dvdcss_close_fd(dvdcss_fd_t fd) noexcept { return close(fd); }
 
+#include <algorithm>
 #include <array>
 #include <new>
-#include <string_view>
 #include <vector>
 
 using std::getenv;
 using std::memcpy;
 using std::snprintf;
-using std::sprintf;
 using std::strerror;
 using std::strlen;
 
@@ -177,13 +168,10 @@ static int win2k_open(dvdcss_t, const char *);
 static int win2k_seek(dvdcss_t, int);
 static int win2k_read(dvdcss_t, void *, int);
 static int win2k_readv(dvdcss_t, ScatterBuffers);
-
-#elif defined(__OS2__)
-static int os2_open(dvdcss_t, const char *);
 #endif
 
 int dvdcss_use_ioctls(dvdcss_t dvdcss) {
-  if (dvdcss->p_stream)
+  if (dvdcss->uses_stream)
     return 0;
 
 #if defined(_WIN32)
@@ -193,16 +181,6 @@ int dvdcss_use_ioctls(dvdcss_t dvdcss) {
 
   /* FIXME: implement this for Windows */
   return 1;
-#elif defined(__OS2__)
-  ULONG ulMode;
-
-  if (DosQueryFHState(dvdcss->i_fd, &ulMode) != 0)
-    return 1; /* What to do?  Be conservative and try to use the ioctls */
-
-  if (ulMode & OPEN_FLAGS_DASD)
-    return 1;
-
-  return 0;
 #else
   struct stat fileinfo;
   int ret;
@@ -216,12 +194,7 @@ int dvdcss_use_ioctls(dvdcss_t dvdcss) {
    * (I've assumed for all OSs that 'r', (raw) device, are char devices
    *  and those that don't contain/use an 'r' in the name are block devices)
    *
-   * Linux    needs a block device
-   * Solaris  needs a char device
-   * Darwin   needs a char device
-   * OpenBSD  needs a char device
-   * NetBSD   needs a char device
-   * FreeBSD  can use either the block or the char device
+   * Linux needs a block device and Darwin needs a character device.
    */
 
   /* Check if this is a block/char device */
@@ -243,34 +216,14 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   kern_return_t kern_result;
   io_iterator_t media_iterator;
   CFMutableDictionaryRef classes_to_match;
-#elif defined(__OS2__)
-#pragma pack(1)
-  struct {
-    BYTE bCmdInfo;
-    BYTE bDrive;
-  } param;
-
-  struct {
-    BYTE abEBPB[31];
-    USHORT usCylinders;
-    BYTE bDevType;
-    USHORT usDevAttr;
-  } data;
-#pragma pack()
-
-  ULONG ulParamLen;
-  ULONG ulDataLen;
-  ULONG rc;
-
-  int i;
 #else
-  static constexpr std::array<std::string_view, 3> kDefaultDevices = {
+  static constexpr std::array<const char *, 3> kDefaultDevices = {
       "/dev/dvd", "/dev/cdrom", "/dev/hdc"};
   int i, i_fd;
 #endif
 
   /* If the device name is non-NULL or stream is set, return. */
-  if (!dvdcss->psz_device.empty() || dvdcss->p_stream) {
+  if (!dvdcss->psz_device.empty() || dvdcss->uses_stream) {
     return;
   }
 
@@ -278,7 +231,7 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   drives = GetLogicalDrives();
 
   for (i = 0; drives; i++) {
-    char psz_device[5];
+    char psz_device[] = "A:\\";
     DWORD cur = 1 << i;
     UINT i_ret;
 
@@ -287,7 +240,7 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
     }
     drives &= ~cur;
 
-    sprintf(psz_device, "%c:\\", 'A' + i);
+    psz_device[0] = static_cast<char>('A' + i);
     i_ret = GetDriveType(psz_device);
     if (i_ret != DRIVE_CDROM) {
       continue;
@@ -361,34 +314,11 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   }
 
   IOObjectRelease(media_iterator);
-#elif defined(__OS2__)
-  for (i = 0; i < 26; i++) {
-    param.bCmdInfo = 0;
-    param.bDrive = i;
-
-    rc = DosDevIOCtl(static_cast<HFILE>(-1), IOCTL_DISK, DSK_GETDEVICEPARAMS,
-                     &param, sizeof(param), &ulParamLen, &data, sizeof(data),
-                     &ulDataLen);
-
-    if (rc == 0) {
-      /* Check for removable and for cylinders */
-      if ((data.usDevAttr & 1) == 0 && data.usCylinders == 0xFFFF) {
-        char psz_dvd[] = "A:";
-
-        psz_dvd[0] += i;
-
-        print_debug(dvdcss, "defaulting to drive `%s'", psz_dvd);
-        dvdcss->psz_device = psz_dvd;
-        return;
-      }
-    }
-  }
 #else
   for (i = 0; i < static_cast<int>(kDefaultDevices.size()); i++) {
-    i_fd = open(kDefaultDevices[i].data(), 0);
+    i_fd = open(kDefaultDevices[i], 0);
     if (i_fd != -1) {
-      print_debug(dvdcss, "defaulting to drive `%s'",
-                  kDefaultDevices[i].data());
+      print_debug(dvdcss, "defaulting to drive `%s'", kDefaultDevices[i]);
       close(i_fd);
       dvdcss->psz_device = kDefaultDevices[i];
       return;
@@ -412,7 +342,7 @@ int dvdcss_open_device(dvdcss_t dvdcss) {
 #endif
 
   /* if callback functions are initialized */
-  if (dvdcss->p_stream) {
+  if (dvdcss->uses_stream) {
     print_debug(dvdcss, "using stream API for access");
     dvdcss->device_strategy.seek = stream_seek;
     dvdcss->device_strategy.read = stream_read;
@@ -434,16 +364,6 @@ int dvdcss_open_device(dvdcss_t dvdcss) {
     dvdcss->device_strategy.readv = win2k_readv;
     return win2k_open(dvdcss, psz_device);
   } else
-#elif defined(__OS2__)
-  /* If device is "X:" or "X:\", we are not actually opening a file. */
-  if (psz_device[0] && psz_device[1] == ':' &&
-      (!psz_device[2] || (psz_device[2] == '\\' && !psz_device[3]))) {
-    print_debug(dvdcss, "using OS/2 API for access");
-    dvdcss->device_strategy.seek = libc_seek;
-    dvdcss->device_strategy.read = libc_read;
-    dvdcss->device_strategy.readv = libc_readv;
-    return os2_open(dvdcss, psz_device);
-  } else
 #endif
   {
     print_debug(dvdcss, "using libc API for access");
@@ -455,7 +375,7 @@ int dvdcss_open_device(dvdcss_t dvdcss) {
 }
 
 int dvdcss_close_device(dvdcss_t dvdcss) {
-  if (dvdcss->p_stream) {
+  if (dvdcss->uses_stream) {
     return 0;
   }
 
@@ -555,35 +475,6 @@ static int win2k_open(dvdcss_t dvdcss, const char *psz_device) {
 }
 #endif /* defined( _WIN32 ) */
 
-#ifdef __OS2__
-static int os2_open(dvdcss_t dvdcss, const char *psz_device) {
-  char psz_dvd[] = "X:";
-  HFILE hfile;
-  ULONG ulAction;
-  ULONG rc;
-
-  psz_dvd[0] = psz_device[0];
-
-  rc = DosOpenL(
-      reinterpret_cast<PSZ>(psz_dvd), &hfile, &ulAction, 0, FILE_NORMAL,
-      OPEN_ACTION_OPEN_IF_EXISTS | OPEN_ACTION_FAIL_IF_NEW,
-      OPEN_ACCESS_READONLY | OPEN_SHARE_DENYNONE | OPEN_FLAGS_DASD, NULL);
-
-  if (rc) {
-    print_error(dvdcss, "failed to open device %s", psz_device);
-    return -1;
-  }
-
-  setmode(hfile, O_BINARY);
-
-  dvdcss->i_fd.reset(hfile);
-
-  dvdcss->i_pos = 0;
-
-  return 0;
-}
-#endif /* __OS2__ */
-
 /*****************************************************************************
  * Seek commands.
  *****************************************************************************/
@@ -601,19 +492,18 @@ static int libc_seek(dvdcss_t dvdcss, int i_blocks) {
   if (i_seek < 0) {
     print_error(dvdcss, "seek error");
     dvdcss->i_pos = -1;
-    return i_seek;
+    return -1;
   }
 
-  dvdcss->i_pos = i_seek / DVDCSS_BLOCK_SIZE;
+  dvdcss->i_pos = static_cast<int>(i_seek / DVDCSS_BLOCK_SIZE);
 
   return dvdcss->i_pos;
 }
 
 static int stream_seek(dvdcss_t dvdcss, int i_blocks) {
-  off_t i_seek =
-      static_cast<off_t>(i_blocks) * static_cast<off_t>(DVDCSS_BLOCK_SIZE);
+  const uint64_t i_seek = static_cast<uint64_t>(i_blocks) * DVDCSS_BLOCK_SIZE;
 
-  if (!dvdcss->p_stream_cb->pf_seek)
+  if (!dvdcss->stream_cb.pf_seek)
     return -1;
 
   if (dvdcss->i_pos == i_blocks) {
@@ -621,7 +511,7 @@ static int stream_seek(dvdcss_t dvdcss, int i_blocks) {
     return i_blocks;
   }
 
-  if (dvdcss->p_stream_cb->pf_seek(dvdcss->p_stream, i_seek) != 0) {
+  if (dvdcss->stream_cb.pf_seek(dvdcss->p_stream, i_seek) != 0) {
     print_error(dvdcss, "seek error");
     dvdcss->i_pos = -1;
     return -1;
@@ -652,7 +542,7 @@ static int win2k_seek(dvdcss_t dvdcss, int i_blocks) {
     return -1;
   }
 
-  dvdcss->i_pos = li_seek.QuadPart / DVDCSS_BLOCK_SIZE;
+  dvdcss->i_pos = static_cast<int>(li_seek.QuadPart / DVDCSS_BLOCK_SIZE);
 
   return dvdcss->i_pos;
 }
@@ -662,24 +552,28 @@ static int win2k_seek(dvdcss_t dvdcss, int i_blocks) {
  * Read commands.
  *****************************************************************************/
 static int libc_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
-  off_t i_size, i_ret, i_ret_blocks;
+  const std::size_t requested_bytes =
+      static_cast<std::size_t>(i_blocks) * DVDCSS_BLOCK_SIZE;
+#ifdef _WIN32
+  const ssize_t bytes_read =
+      read(dvdcss->i_fd, p_buffer, static_cast<unsigned int>(requested_bytes));
+#else
+  const ssize_t bytes_read = read(dvdcss->i_fd, p_buffer, requested_bytes);
+#endif
 
-  i_size = static_cast<off_t>(i_blocks) * static_cast<off_t>(DVDCSS_BLOCK_SIZE);
-  i_ret = read(dvdcss->i_fd, p_buffer, i_size);
-
-  if (i_ret < 0) {
+  if (bytes_read < 0) {
     print_error(dvdcss, "read error");
     dvdcss->i_pos = -1;
-    return i_ret;
+    return -1;
   }
 
-  i_ret_blocks = i_ret / DVDCSS_BLOCK_SIZE;
+  const int blocks_read = static_cast<int>(bytes_read / DVDCSS_BLOCK_SIZE);
 
   /* Handle partial reads */
-  if (i_ret != i_size) {
+  if (static_cast<std::size_t>(bytes_read) != requested_bytes) {
     int i_seek, i_set_pos;
 
-    i_set_pos = dvdcss->i_pos + i_ret_blocks;
+    i_set_pos = dvdcss->i_pos + blocks_read;
     dvdcss->i_pos = -1;
     i_seek = libc_seek(dvdcss, i_set_pos);
     if (i_seek < 0) {
@@ -687,51 +581,57 @@ static int libc_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
     }
 
     /* We have to return now so that i_pos isn't clobbered */
-    return i_ret_blocks;
+    return blocks_read;
   }
 
-  dvdcss->i_pos += i_ret_blocks;
-  return i_ret_blocks;
+  dvdcss->i_pos += blocks_read;
+  return blocks_read;
 }
 
 static int stream_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
-  off_t i_size, i_ret, i_ret_blocks;
+  const int original_position = dvdcss->i_pos;
+  const int requested_bytes = i_blocks * DVDCSS_BLOCK_SIZE;
 
-  i_size = static_cast<off_t>(i_blocks) * static_cast<off_t>(DVDCSS_BLOCK_SIZE);
-
-  if (!dvdcss->p_stream_cb->pf_read)
+  if (!dvdcss->stream_cb.pf_read)
     return -1;
 
-  i_ret = dvdcss->p_stream_cb->pf_read(dvdcss->p_stream, p_buffer, i_size);
+  const int bytes_read =
+      dvdcss->stream_cb.pf_read(dvdcss->p_stream, p_buffer, requested_bytes);
 
-  if (i_ret < 0) {
+  if (bytes_read < 0) {
     print_error(dvdcss, "read error");
     dvdcss->i_pos = -1;
-    return i_ret;
+    return bytes_read;
+  }
+  if (bytes_read > requested_bytes) {
+    print_error(dvdcss, "stream returned more data than requested");
+    dvdcss->i_pos = -1;
+    return -1;
   }
 
-  i_ret_blocks = i_ret / DVDCSS_BLOCK_SIZE;
+  const int blocks_read = bytes_read / DVDCSS_BLOCK_SIZE;
 
   /* Handle partial reads */
-  if (i_ret != i_size) {
+  if (bytes_read != requested_bytes) {
     int i_seek;
 
     dvdcss->i_pos = -1;
-    i_seek = stream_seek(dvdcss, i_ret_blocks);
+    i_seek = stream_seek(dvdcss, original_position + blocks_read);
     if (i_seek < 0) {
       return i_seek;
     }
 
     /* We have to return now so that i_pos isn't clobbered */
-    return i_ret_blocks;
+    return blocks_read;
   }
 
-  dvdcss->i_pos += i_ret_blocks;
-  return i_ret_blocks;
+  dvdcss->i_pos += blocks_read;
+  return blocks_read;
 }
 
 #if defined(_WIN32)
 static int win2k_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
+  const int original_position = dvdcss->i_pos;
   DWORD i_bytes;
 
   if (!ReadFile(dvdcss_to_handle(dvdcss->i_fd), p_buffer,
@@ -740,9 +640,16 @@ static int win2k_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
     return -1;
   }
 
-  i_bytes /= DVDCSS_BLOCK_SIZE;
-  dvdcss->i_pos += i_bytes;
-  return i_bytes;
+  const int blocks_read = static_cast<int>(i_bytes / DVDCSS_BLOCK_SIZE);
+  if ((i_bytes % DVDCSS_BLOCK_SIZE) != 0) {
+    dvdcss->i_pos = -1;
+    if (win2k_seek(dvdcss, original_position + blocks_read) < 0) {
+      return -1;
+    }
+  } else {
+    dvdcss->i_pos += blocks_read;
+  }
+  return blocks_read;
 }
 #endif /* defined( _WIN32 ) */
 
@@ -751,6 +658,7 @@ static int win2k_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
  *****************************************************************************/
 static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
 #if defined(_WIN32)
+  const int original_position = dvdcss->i_pos;
   int i_total_bytes = 0;
   int i_bytes;
 
@@ -781,7 +689,7 @@ static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
       const int i_total_blocks = i_total_bytes / DVDCSS_BLOCK_SIZE;
 
       dvdcss->i_pos = -1;
-      i_seek = libc_seek(dvdcss, i_total_blocks);
+      i_seek = libc_seek(dvdcss, original_position + i_total_blocks);
       if (i_seek < 0) {
         return i_seek;
       }
@@ -796,22 +704,29 @@ static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   dvdcss->i_pos += i_total_blocks;
   return i_total_blocks;
 #else
-  auto iovecs = make_raw_iovecs(buffers);
-  if (iovecs.empty()) {
+  if (buffers.empty()) {
     return 0;
   }
 
-  int i_read =
-      readv(dvdcss->i_fd, iovecs.data(), static_cast<int>(iovecs.size()));
+  const int original_position = dvdcss->i_pos;
+  const ssize_t bytes_read =
+      readv(dvdcss->i_fd, buffers.raw_data(), static_cast<int>(buffers.size()));
 
-  if (i_read < 0) {
+  if (bytes_read < 0) {
     dvdcss->i_pos = -1;
-    return i_read;
+    return -1;
   }
 
-  i_read /= DVDCSS_BLOCK_SIZE;
-  dvdcss->i_pos += i_read;
-  return i_read;
+  const int blocks_read = static_cast<int>(bytes_read / DVDCSS_BLOCK_SIZE);
+  if ((bytes_read % DVDCSS_BLOCK_SIZE) != 0) {
+    dvdcss->i_pos = -1;
+    if (libc_seek(dvdcss, original_position + blocks_read) < 0) {
+      return -1;
+    }
+  } else {
+    dvdcss->i_pos += blocks_read;
+  }
+  return blocks_read;
 #endif
 }
 
@@ -819,23 +734,36 @@ static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
  * stream_readv: vectored read
  *****************************************************************************/
 static int stream_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
-  int i_read;
-
-  if (!dvdcss->p_stream_cb->pf_readv)
+  if (!dvdcss->stream_cb.pf_readv)
     return -1;
 
-  auto iovecs = make_raw_iovecs(buffers);
-
-  i_read = dvdcss->p_stream_cb->pf_readv(dvdcss->p_stream, iovecs.data(),
-                                         static_cast<int>(iovecs.size()));
-
-  if (i_read < 0) {
+  const auto requested_size = buffers.byte_size();
+  if (!requested_size ||
+      *requested_size >
+          static_cast<std::size_t>(std::numeric_limits<int>::max())) {
     dvdcss->i_pos = -1;
-    return i_read;
+    return -1;
   }
 
-  dvdcss->i_pos += i_read / DVDCSS_BLOCK_SIZE;
-  return i_read / DVDCSS_BLOCK_SIZE;
+  const int original_position = dvdcss->i_pos;
+  const int i_read = dvdcss->stream_cb.pf_readv(
+      dvdcss->p_stream, buffers.raw_data(), static_cast<int>(buffers.size()));
+
+  if (i_read < 0 || static_cast<std::size_t>(i_read) > *requested_size) {
+    dvdcss->i_pos = -1;
+    return -1;
+  }
+
+  const int blocks_read = i_read / DVDCSS_BLOCK_SIZE;
+  if ((i_read % DVDCSS_BLOCK_SIZE) != 0) {
+    dvdcss->i_pos = -1;
+    if (stream_seek(dvdcss, original_position + blocks_read) < 0) {
+      return -1;
+    }
+  } else {
+    dvdcss->i_pos += blocks_read;
+  }
+  return blocks_read;
 }
 
 #if defined(_WIN32)
@@ -843,6 +771,7 @@ static int stream_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
  * win2k_readv: vectored read using ReadFile for Win2K
  *****************************************************************************/
 static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
+  const int original_position = dvdcss->i_pos;
   int i_blocks_read;
   int i_total_bytes = 0;
   DWORD i_bytes;
@@ -877,24 +806,31 @@ static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
     return -1;
   }
   i_blocks_read = i_bytes / DVDCSS_BLOCK_SIZE;
-
-  /* We just have to copy the content of the temp buffer into the iovecs */
-  int i_blocks_remaining = i_blocks_read;
-  int i_buffer_index = 0;
-  for (; i_blocks_remaining > 0; ++i_buffer_index) {
-    memcpy(buffers[static_cast<size_t>(i_buffer_index)].data(),
-           dvdcss->p_readv_buffer.data() +
-               (i_blocks_read - i_blocks_remaining) * DVDCSS_BLOCK_SIZE,
-           buffers[static_cast<size_t>(i_buffer_index)].size());
-    /* if we read less blocks than asked, we'll just end up copying
-     * garbage, this isn't an issue as we return the number of
-     * blocks actually read */
-    i_blocks_remaining -=
-        static_cast<int>(buffers[static_cast<size_t>(i_buffer_index)].size() /
-                         DVDCSS_BLOCK_SIZE);
+  if ((i_bytes % DVDCSS_BLOCK_SIZE) != 0) {
+    dvdcss->i_pos = -1;
+    if (win2k_seek(dvdcss, original_position + i_blocks_read) < 0) {
+      return -1;
+    }
   }
 
-  dvdcss->i_pos += i_blocks_read;
+  /* We just have to copy the content of the temp buffer into the iovecs */
+  std::size_t bytes_remaining =
+      static_cast<std::size_t>(i_blocks_read) * DVDCSS_BLOCK_SIZE;
+  std::size_t source_offset = 0;
+  for (auto buffer : buffers) {
+    const std::size_t bytes_to_copy = std::min(buffer.size(), bytes_remaining);
+    if (bytes_to_copy == 0) {
+      break;
+    }
+    memcpy(buffer.data(), dvdcss->p_readv_buffer.data() + source_offset,
+           bytes_to_copy);
+    source_offset += bytes_to_copy;
+    bytes_remaining -= bytes_to_copy;
+  }
+
+  if ((i_bytes % DVDCSS_BLOCK_SIZE) == 0) {
+    dvdcss->i_pos += i_blocks_read;
+  }
   return i_blocks_read;
 }
 #endif /* defined( _WIN32 ) */

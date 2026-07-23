@@ -1,14 +1,55 @@
-project('libdvdcss', 'cpp',
+project('libdvdcss', 'c', 'cpp',
     version: '1.6.0',
-    meson_version: '>= 0.60.0',
+    meson_version: '>= 1.3.0',
     default_options: ['buildtype=debugoptimized',
-                      'cpp_std=c++20',
+                      'c_std=c11',
+                      'cpp_std=c++23',
                       'default_library=both',
-                      'warning_level=2'])
+                      'warning_level=3'])
 
 dvdcss_src_root = meson.current_source_dir()
 dvdcss_build_root = meson.current_build_dir()
+cc = meson.get_compiler('c')
 cpp = meson.get_compiler('cpp')
+
+supported_systems = ['linux', 'windows', 'darwin']
+supported_cpu_families = ['x86_64', 'aarch64']
+
+if host_machine.system() not in supported_systems
+    error('Unsupported operating system: ' + host_machine.system() +
+          '. libdvdcss supports Linux, Windows, and macOS.')
+endif
+
+if host_machine.cpu_family() not in supported_cpu_families
+    error('Unsupported CPU architecture: ' + host_machine.cpu_family() +
+          '. libdvdcss supports x86-64 and AArch64.')
+endif
+
+cpp23_requirements = '''
+#include <bit>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <span>
+#include <string>
+
+int main()
+{
+    static_assert(__cplusplus > 202002L);
+    static_assert(std::byteswap(std::uint32_t{0x01020304}) == 0x04030201);
+    std::expected<int, int> result = 1;
+    std::span<const char> view;
+    std::filesystem::path path{"."};
+    const auto text = std::format("{}", result.value());
+    return static_cast<int>(view.size() + path.empty() + text.empty());
+}
+'''
+
+if not cpp.compiles(cpp23_requirements,
+                    name: 'required C++23 standard library facilities')
+    error('libdvdcss requires C++23 support for std::expected, std::byteswap, std::span, std::format, and std::filesystem')
+endif
 
 # Configuration data for config.h
 cdata = configuration_data()
@@ -30,12 +71,12 @@ cdata.set_quoted('PACKAGE_VERSION', dvdcss_version)
 # Arguments in test_args will be used even on feature tests
 test_args = ['-D_DEFAULT_SOURCE']
 extra_dependencies = []
+threads_dep = dependency('threads')
+extra_dependencies += threads_dep
 
 if host_machine.system() == 'windows' and cpp.get_argument_syntax() == 'msvc'
     test_args += ['-D_CRT_SECURE_NO_WARNINGS', '-D_CRT_NONSTDC_NO_WARNINGS',
                   '-D_WIN32_IE=0x0501', '-DWIN32_LEAN_AND_MEAN', '-DPATH_MAX=2048']
-elif host_machine.system() == 'sunos'
-    test_args += '-D_POSIX_C_SOURCE=200809L'
 endif
 
 # Header checks
@@ -46,7 +87,6 @@ check_headers = [
     'io.h',
     'pwd.h',
     'scsi/sg.h',
-    'cam/scsi/scsi_sg.h',
     'sys/ioctl.h',
     'sys/param.h',
     'sys/stat.h',
@@ -71,32 +111,12 @@ elif host_machine.system() == 'darwin'
     add_project_arguments(cpp.get_supported_arguments('-no-cpp-precomp'), language: 'cpp')
     cdata.set('DARWIN_DVD_IOCTL', 1)
     extra_dependencies += dependency('appleframeworks', modules: ['CoreFoundation', 'IOKit'])
-elif host_machine.system() == 'sunos' \
-     and cpp.has_header('sys/scsi/scsi_types.h', args: test_args) \
-     and cpp.has_header('sys/scsi/impl/uscsi.h', args: test_args)
-    cdata.set('SOLARIS_USCSI', 1)
-elif host_machine.system() == 'haiku' \
-     and cpp.has_header('scsi.h', args: test_args)
-    # Haiku is supported as long as scsi.h is found
-elif host_machine.system() == 'openbsd' \
-     and cpp.has_header('sys/cdio.h', args: test_args)
-    cdata.set('DVD_STRUCT_IN_SYS_CDIO_H', 1)
-    cdata.set('HAVE_LINUX_DVD_STRUCT', 1)
-    cdata.set('HAVE_OPENBSD_DVD_STRUCT', 1)
-elif host_machine.system() in ['linux', 'android'] \
-     or cpp.has_header_symbol('linux/cdrom.h', 'dvd_struct', args: test_args)
+elif host_machine.system() == 'linux' \
+     and cpp.has_header_symbol('linux/cdrom.h', 'dvd_struct', args: test_args)
     cdata.set('DVD_STRUCT_IN_LINUX_CDROM_H', 1)
     cdata.set('HAVE_LINUX_DVD_STRUCT', 1)
-elif cpp.has_header_symbol('sys/dvdio.h', 'dvd_struct',
-        prefix: '#include <sys/types.h>', args: test_args) # NetBSD
-    cdata.set('DVD_STRUCT_IN_SYS_DVDIO_H', 1)
-    cdata.set('HAVE_LINUX_DVD_STRUCT', 1)
-elif cpp.has_header_symbol('sys/dvdio.h', 'struct dvd_struct', 
-        prefix: '#include <sys/types.h>', args: test_args) # FreeBSD
-    cdata.set('DVD_STRUCT_IN_SYS_DVDIO_H', 1)
-    cdata.set('HAVE_BSD_DVD_STRUCT', 1)
 else
-    warning('No DVD ioctls found for this system. libdvdcss will probably fail to build.')
+    error('Required DVD ioctl support is unavailable for ' + host_machine.system())
 endif
 
 posix_mkdir = ''

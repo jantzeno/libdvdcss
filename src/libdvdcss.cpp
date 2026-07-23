@@ -29,9 +29,8 @@
  * \e libdvdcss is a simple library designed for accessing DVDs like a block
  * device without having to bother about the decryption. The important features
  * are:
- * \li portability: Currently supported platforms are GNU/Linux, FreeBSD,
- *     NetBSD, OpenBSD, Haiku, Mac OS X, Solaris, QNX, OS/2, and Windows
- *     2000 or later.
+ * \li portability: Supported platforms are GNU/Linux, macOS, and Windows on
+ *     x86-64 and AArch64.
  * \li adaptability: Unlike most similar projects, libdvdcss does not require
  *     the region of your drive to be set and will try its best to read from
  *     the disc even in the case of a region mismatch.
@@ -99,6 +98,7 @@
 #include "libdvdcpxm.h"
 
 #include <cerrno>
+#include <charconv>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -106,8 +106,10 @@
 #include <filesystem>
 #include <format>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <sys/stat.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_PARAM_H
@@ -135,13 +137,11 @@
 #include "ioctl.h"
 #include "libdvdcss.h"
 
-using std::atoi;
 using std::format;
 using std::getenv;
 using std::memcpy;
 using std::strcmp;
 using std::strlen;
-using std::strncmp;
 
 using namespace dvdcss;
 
@@ -200,7 +200,7 @@ int dvdcss_s::cleanup() noexcept {
 
   cleanup_done = true;
 
-  if (cpxm || cpxm_was_cached) {
+  if (cpxm || owns_cpxm_cache_entry) {
     static_cast<void>(dvdcpxm_close_internal(this));
   }
 
@@ -216,12 +216,18 @@ static void set_verbosity(dvdcss_t dvdcss) {
   dvdcss->b_debug = 0;
   dvdcss->b_errors = 0;
 
-  if (psz_verbose != NULL) {
-    int i = atoi(psz_verbose);
+  if (psz_verbose != nullptr) {
+    int verbosity = 0;
+    const std::string_view text{psz_verbose};
+    const auto result =
+        std::from_chars(text.data(), text.data() + text.size(), verbosity);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
+      return;
+    }
 
-    if (i >= 2)
+    if (verbosity >= 2)
       dvdcss->b_debug = 1;
-    if (i >= 1)
+    if (verbosity >= 1)
       dvdcss->b_errors = 1;
   }
 }
@@ -232,11 +238,12 @@ static int set_access_method(dvdcss_t dvdcss) {
   if (!psz_method)
     return 0;
 
-  if (!strncmp(psz_method, "key", 4)) {
+  const std::string_view method{psz_method};
+  if (method == "key") {
     dvdcss->i_method = dvdcss_method::key;
-  } else if (!strncmp(psz_method, "disc", 5)) {
+  } else if (method == "disc") {
     dvdcss->i_method = dvdcss_method::disc;
-  } else if (!strncmp(psz_method, "title", 5)) {
+  } else if (method == "title") {
     dvdcss->i_method = dvdcss_method::title;
   } else {
     print_error(dvdcss,
@@ -249,36 +256,25 @@ static int set_access_method(dvdcss_t dvdcss) {
 }
 
 static int set_cache_directory(dvdcss_t dvdcss) {
-  char *psz_cache = getenv("DVDCSS_CACHE");
+  const char *psz_cache = getenv("DVDCSS_CACHE");
   std::filesystem::path cache_directory;
 
   if (psz_cache && !strcmp(psz_cache, "off")) {
     return -1;
   }
 
-  if (psz_cache == NULL || psz_cache[0] == '\0') {
+  if (psz_cache == nullptr || psz_cache[0] == '\0') {
 #ifdef _WIN32
     char psz_home[PATH_MAX];
 
     /* Cache our keys in
      * C:\Documents and Settings\$USER\Application Data\dvdcss\ */
-    if (SHGetFolderPathA(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL,
+    if (SHGetFolderPathA(nullptr, CSIDL_APPDATA | CSIDL_FLAG_CREATE, nullptr,
                          SHGFP_TYPE_CURRENT, psz_home) == S_OK) {
       cache_directory = std::filesystem::path(psz_home) / "dvdcss";
     }
 #else
-#ifdef __ANDROID__
-    /* $HOME is not writable on __ANDROID__ so we have to create a custom
-     * directory in userland */
-    char *psz_home = "/sdcard/Android/data/org.videolan.dvdcss";
-
-    int i_ret = create_directories_if_needed(psz_home);
-    if (i_ret < 0 && errno != EEXIST) {
-      print_error(dvdcss, "failed creating home directory");
-      psz_home = NULL;
-    }
-#else
-    char *psz_home = NULL;
+    char *psz_home = nullptr;
 #ifdef HAVE_PWD_H
     struct passwd *p_pwd;
 
@@ -289,31 +285,13 @@ static int set_cache_directory(dvdcss_t dvdcss) {
     }
 #endif /* HAVE_PWD_H */
 
-#endif /* __ANDROID__ */
-
-    if (psz_home == NULL) {
+    if (psz_home == nullptr) {
       psz_home = getenv("HOME");
     }
 
     /* Cache our keys in ${HOME}/.dvdcss/ */
     if (psz_home && psz_home[0]) {
-#ifdef __OS2__
-      if (*psz_home == '/' || *psz_home == '\\') {
-        const char *psz_unixroot = getenv("UNIXROOT");
-
-        if (psz_unixroot && psz_unixroot[0] && psz_unixroot[1] == ':' &&
-            psz_unixroot[2] == '\0') {
-          cache_directory = psz_unixroot;
-        }
-      }
-#endif /* __OS2__ */
-
-      if (cache_directory.empty()) {
-        cache_directory = std::filesystem::path(psz_home) / ".dvdcss";
-      } else {
-        cache_directory += psz_home;
-        cache_directory /= ".dvdcss";
-      }
+      cache_directory = std::filesystem::path(psz_home) / ".dvdcss";
     }
 #endif /* ! defined( _WIN32 ) */
   } else {
@@ -356,8 +334,8 @@ static int init_cache_dir(dvdcss_t dvdcss) {
   const auto tagfile_string = tagfile.string();
   i_fd = open(tagfile_string.c_str(), O_RDWR | O_CREAT, 0644);
   if (i_fd >= 0) {
-    ssize_t len = strlen(psz_tag);
-    if (write(i_fd, psz_tag, len) < len) {
+    const std::size_t len = strlen(psz_tag);
+    if (write(i_fd, psz_tag, len) < static_cast<ssize_t>(len)) {
       print_error(dvdcss, "Error writing cache directory tag, continuing..\n");
     }
     close(i_fd);
@@ -489,7 +467,11 @@ static void init_cache(dvdcss_t dvdcss) {
  * and when possible, the disc key is retrieved.
  */
 extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
-  return detail::dvdcss_open_common(psz_target, NULL, NULL);
+  try {
+    return detail::dvdcss_open_common(psz_target, nullptr, nullptr);
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 /**
@@ -503,7 +485,16 @@ extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
  */
 extern "C" dvdcss_t dvdcss_open_stream(void *p_stream,
                                        dvdcss_stream_cb *p_stream_cb) {
-  return detail::dvdcss_open_common(NULL, p_stream, p_stream_cb);
+  if (p_stream_cb == nullptr || p_stream_cb->pf_seek == nullptr ||
+      p_stream_cb->pf_read == nullptr) {
+    return nullptr;
+  }
+
+  try {
+    return detail::dvdcss_open_common(nullptr, p_stream, p_stream_cb);
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 namespace dvdcss::detail {
@@ -515,11 +506,8 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   /* Allocate the library structure. */
   auto dvdcss_state = std::make_unique<dvdcss_s>();
   dvdcss_t dvdcss = dvdcss_state.get();
-  if (dvdcss == NULL) {
-    return NULL;
-  }
-
-  if (psz_target == NULL && (p_stream == NULL || p_stream_cb == NULL)) {
+  if (p_stream_cb != nullptr &&
+      (p_stream_cb->pf_seek == nullptr || p_stream_cb->pf_read == nullptr)) {
     goto error;
   }
 
@@ -533,10 +521,13 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   dvdcss->device_strategy = {};
 
   dvdcss->p_stream = p_stream;
-  dvdcss->p_stream_cb = p_stream_cb;
+  dvdcss->stream_cb =
+      p_stream_cb != nullptr ? *p_stream_cb : dvdcss_stream_cb{};
+  dvdcss->uses_stream = p_stream_cb != nullptr;
 
   dvdcss->cpxm = nullptr;
-  dvdcss->cpxm_was_cached = 0;
+  dvdcss->cpxm_cache_key.reset();
+  dvdcss->owns_cpxm_cache_entry = false;
 
   /* Set library verbosity from DVDCSS_VERBOSE environment variable. */
   set_verbosity(dvdcss);
@@ -591,7 +582,7 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   return dvdcss_state.release();
 
 error:
-  return NULL;
+  return nullptr;
 }
 
 } // namespace dvdcss::detail
@@ -607,6 +598,9 @@ error:
  * Useful to conveniently format error messages in external applications.
  */
 extern "C" const char *dvdcss_error(const dvdcss_t dvdcss) {
+  if (dvdcss == nullptr) {
+    return "invalid libdvdcss handle";
+  }
   return dvdcss->psz_error.c_str();
 }
 
@@ -633,7 +627,12 @@ extern "C" const char *dvdcss_error(const dvdcss_t dvdcss) {
  * even with the "title" method. This flag is typically used when seeking
  * in a new title.
  */
-extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
+static int dvdcss_seek_impl(dvdcss_t dvdcss, int i_blocks, int i_flags) {
+  if (i_blocks < 0) {
+    print_error(dvdcss, "invalid negative block position");
+    return -1;
+  }
+
   /* title cracking method is too slow to be used at each seek */
   if (((i_flags & DVDCSS_SEEK_MPEG) &&
        (dvdcss->i_method != dvdcss_method::title)) ||
@@ -647,12 +646,17 @@ extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
   return dvdcss->device_strategy.seek(dvdcss, i_blocks);
 }
 
+extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
+  return detail::invoke_c_api(
+      dvdcss, [=] { return dvdcss_seek_impl(dvdcss, i_blocks, i_flags); });
+}
+
 /**
  * \brief Read from the disc and decrypt data if requested.
  *
  * \param dvdcss a \e libdvdcss instance
  * \param p_buffer a buffer that will contain the data read from the disc
- * \param i_blocks the amount of blocks to read
+ * \param i_blocks the number of iovec entries
  * \param i_flags #DVDCSS_NOFLAGS, optionally ORed with #DVDCSS_READ_DECRYPT
  * \return the amount of blocks read or a negative value in case an
  *         error happened.
@@ -670,8 +674,16 @@ extern "C" int dvdcss_seek(dvdcss_t dvdcss, int i_blocks, int i_flags) {
  * \warning dvdcss_read() expects to be able to write \p i_blocks *
  *          #DVDCSS_BLOCK_SIZE bytes into \p p_buffer.
  */
-extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
-                           int i_flags) {
+static int dvdcss_read_impl(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
+                            int i_flags) {
+  constexpr int kMaxBlocksPerRead =
+      std::numeric_limits<int>::max() / DVDCSS_BLOCK_SIZE;
+  if (i_blocks < 0 || i_blocks > kMaxBlocksPerRead ||
+      (i_blocks > 0 && p_buffer == nullptr)) {
+    print_error(dvdcss, "invalid read buffer or block count");
+    return -1;
+  }
+
   uint8_t *_p_buffer = static_cast<uint8_t *>(p_buffer);
   int i_ret, i_index;
 
@@ -707,6 +719,13 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
   return i_ret;
 }
 
+extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
+                           int i_flags) {
+  return detail::invoke_c_api(dvdcss, [=] {
+    return dvdcss_read_impl(dvdcss, p_buffer, i_blocks, i_flags);
+  });
+}
+
 /**
  * \brief Read data from the disc into multiple buffers and decrypt data if
  *        requested.
@@ -719,7 +738,7 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
  * \return the amount of blocks read or a negative value in case an
  *         error happened.
  *
- * Read \p i_blocks logical blocks from the DVD and write them
+ * Read into \p i_blocks iovec entries from the DVD and write the data
  * to an array of iovec structures.
  *
  * You typically set \p i_flags to #DVDCSS_NOFLAGS when reading data from a
@@ -735,10 +754,21 @@ extern "C" int dvdcss_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
  *          Moreover, all iov_len members of the iovec structures should be
  *          multiples of #DVDCSS_BLOCK_SIZE.
  */
-extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
-                            int i_flags) {
+static int dvdcss_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
+                             int i_flags) {
+  if (i_blocks < 0 || (i_blocks > 0 && p_iovec == nullptr)) {
+    print_error(dvdcss, "invalid scatter buffer or block count");
+    return -1;
+  }
+
   struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
   auto buffers = make_scatter_buffers(_p_iovec, i_blocks);
+  const auto byte_size = buffers.byte_size();
+  if (!byte_size || *byte_size > std::numeric_limits<int>::max() ||
+      (*byte_size % DVDCSS_BLOCK_SIZE) != 0) {
+    print_error(dvdcss, "invalid scatter buffer layout");
+    return -1;
+  }
   int i_ret;
 
   i_ret = dvdcss->device_strategy.readv(dvdcss, buffers);
@@ -751,10 +781,6 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
 
   /* Decrypt the blocks we managed to read */
   for (auto buffer : buffers) {
-    if (buffer.size() & 0x7ff) {
-      return -1;
-    }
-
     for (size_t offset = 0; offset < buffer.size() && blocks_remaining > 0;
          offset += DVDCSS_BLOCK_SIZE, --blocks_remaining) {
       auto sector = buffer.subspan(offset, DVDCSS_BLOCK_SIZE);
@@ -766,6 +792,13 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
   return i_ret;
 }
 
+extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
+                            int i_flags) {
+  return detail::invoke_c_api(dvdcss, [=] {
+    return dvdcss_readv_impl(dvdcss, p_iovec, i_blocks, i_flags);
+  });
+}
+
 /**
  * \brief Clean up library state and structures.
  *
@@ -775,11 +808,16 @@ extern "C" int dvdcss_readv(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
  * Close the DVD device and free all the memory allocated by \e libdvdcss.
  * On return, the #dvdcss_t is invalidated and may not be used again.
  */
-extern "C" int dvdcss_close(dvdcss_t dvdcss) {
+static int dvdcss_close_impl(dvdcss_t dvdcss) {
   const int i_ret = dvdcss->cleanup();
   delete dvdcss;
 
   return i_ret;
+}
+
+extern "C" int dvdcss_close(dvdcss_t dvdcss) {
+  return detail::invoke_c_api(dvdcss,
+                              [=] { return dvdcss_close_impl(dvdcss); });
 }
 
 /**
@@ -789,7 +827,7 @@ extern "C" int dvdcss_close(dvdcss_t dvdcss) {
  * \return 1 if the DVD is scrambled, 0 otherwise.
  */
 extern "C" int dvdcss_is_scrambled(dvdcss_t dvdcss) {
-  return dvdcss->b_scrambled;
+  return detail::invoke_c_api(dvdcss, [=] { return dvdcss->b_scrambled; });
 }
 
 /**
@@ -798,5 +836,5 @@ extern "C" int dvdcss_is_scrambled(dvdcss_t dvdcss) {
  * \return 0 if the disc is unencrypted, 1 if cppm or css, 2 if cprm
  */
 extern "C" int dvdcss_get_encryption_type(dvdcss_t dvdcss) {
-  return dvdcss->media_type;
+  return detail::invoke_c_api(dvdcss, [=] { return dvdcss->media_type; });
 }

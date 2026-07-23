@@ -32,9 +32,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <expected>
+#include <format>
+#include <iterator>
 #include <new>
 #include <optional>
 #include <span>
+#include <string>
 #include <sys/types.h>
 #include <vector>
 #ifdef HAVE_SYS_PARAM_H
@@ -51,15 +55,12 @@
 #include "css.h"
 #include "csstables.h"
 #include "device.h"
-#include "expected_compat.h"
 #include "ioctl.h"
 #include "libdvdcss.h"
 
 using std::memcmp;
 using std::memcpy;
 using std::memset;
-using std::snprintf;
-using std::sprintf;
 using std::sscanf;
 
 namespace dvdcss {
@@ -100,16 +101,14 @@ enum class title_key_read_error {
 };
 
 using title_key_read_result =
-    detail::expected<std::optional<dvdcss_key>, title_key_read_error>;
+    std::expected<std::optional<dvdcss_key>, title_key_read_error>;
 
 static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t, int);
 
 static std::filesystem::path build_cache_block_path(const dvdcss_t dvdcss,
                                                     int i_block) {
-  char psz_block[11];
-  snprintf(psz_block, sizeof(psz_block), "%010x",
-           static_cast<unsigned int>(i_block));
-  return dvdcss->psz_cachefile / psz_block;
+  return dvdcss->psz_cachefile /
+         std::format("{:010x}", static_cast<unsigned int>(i_block));
 }
 
 /*****************************************************************************
@@ -126,8 +125,7 @@ static std::filesystem::path build_cache_block_path(const dvdcss_t dvdcss,
  *****************************************************************************/
 int dvdcss_test(dvdcss_t dvdcss) {
   const char *psz_type, *psz_rpc;
-  char psz_region[17];
-  char *p_region = psz_region;
+  std::string region_string;
   int i_ret, i_copyright, i_type, i_mask, i_rpc, i_region;
 
   i_ret = ioctl_ReadCopyright(dvdcss->i_fd, 0 /* i_layer */, &i_copyright);
@@ -196,16 +194,14 @@ int dvdcss_test(dvdcss_t dvdcss) {
     break;
   }
 
-  *p_region = '\0';
   for (i_region = 0; i_region < 8; i_region++) {
     if (!(i_mask & (1 << i_region))) {
-      sprintf(p_region, " %d", i_region + 1);
-      p_region += 2;
+      std::format_to(std::back_inserter(region_string), " {}", i_region + 1);
     }
   }
 
-  print_debug(dvdcss, "drive region(s)%s, region mask 0x%x, %s, %s", psz_region,
-              i_mask, psz_rpc, psz_type);
+  print_debug(dvdcss, "drive region(s)%s, region mask 0x%x, %s, %s",
+              region_string.c_str(), i_mask, psz_rpc, psz_type);
 
   if (i_copyright && i_rpc == 1 && i_type == 0) {
     print_error(dvdcss, "CSS error: drive will prevent access to "
@@ -296,12 +292,12 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
 
     i_fd = open(cache_path_string.c_str(), O_RDWR | O_CREAT, 0644);
     if (i_fd >= 0) {
-      char psz_key[kPszKeySize + 2];
+      const std::string key_text = std::format(
+          "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\r\n", p_title_key[0],
+          p_title_key[1], p_title_key[2], p_title_key[3], p_title_key[4]);
 
-      sprintf(psz_key, "%02x:%02x:%02x:%02x:%02x\r\n", p_title_key[0],
-              p_title_key[1], p_title_key[2], p_title_key[3], p_title_key[4]);
-
-      if (write(i_fd, psz_key, kPszKeySize + 1) < kPszKeySize + 1) {
+      if (write(i_fd, key_text.data(), key_text.size()) <
+          static_cast<ssize_t>(key_text.size())) {
         print_error(dvdcss, "Error caching key on disk, continuing..\n");
       }
       close(i_fd);
@@ -443,7 +439,8 @@ static int dvdcss_titlekey(dvdcss_t dvdcss, int i_pos,
           "lost authentication success flag (ASF), requesting title key");
       break;
     case title_key_read_error::read_failed:
-      static_cast<void>(ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
+      static_cast<void>(
+          ioctl_InvalidateAgid(dvdcss->i_fd, &dvdcss->css.i_agid));
       break;
     case title_key_read_error::authentication_failed:
       break;
@@ -976,8 +973,8 @@ static const dvdcss_key player_keys[] = {
  * p_struct_disckey: the 2048 byte DVD_STRUCT_DISCKEY data
  * p_disc_key: result, the 5 byte disc key
  *****************************************************************************/
-static std::optional<dvdcss_key> DecryptDiscKey(
-    dvdcss_t dvdcss, std::span<const uint8_t> p_struct_disckey) {
+static std::optional<dvdcss_key>
+DecryptDiscKey(dvdcss_t dvdcss, std::span<const uint8_t> p_struct_disckey) {
   dvdcss_key p_disc_key = {};
   dvdcss_key p_verify = {};
   unsigned int i, n = 0;
@@ -1010,18 +1007,17 @@ static std::optional<dvdcss_key> DecryptDiscKey(
   return std::nullopt;
 }
 
-static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss, int i_pos) {
+static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss,
+                                                    int i_pos) {
   dvdcss_key p_key = {};
 
   /* We need to authenticate again every time to get a new session key. */
   if (GetBusKey(dvdcss) < 0) {
-    return detail::unexpected{
-        title_key_read_error::authentication_failed};
+    return std::unexpected{title_key_read_error::authentication_failed};
   }
 
-  const bool read_failed =
-      ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid, i_pos,
-                         std::span{p_key}) < 0;
+  const bool read_failed = ioctl_ReadTitleKey(dvdcss->i_fd, &dvdcss->css.i_agid,
+                                              i_pos, std::span{p_key}) < 0;
   if (read_failed) {
     print_debug(dvdcss, "ioctl ReadTitleKey failed (region mismatch?)");
   }
@@ -1029,17 +1025,16 @@ static title_key_read_result ReadTitleKeyWithIoctls(dvdcss_t dvdcss, int i_pos) 
   /* Test ASF, it will be reset to 0 if we got a Region error. */
   switch (GetASF(dvdcss)) {
   case -1:
-    return detail::unexpected{
+    return std::unexpected{
         title_key_read_error::authentication_flag_unavailable};
   case 0:
     if (read_failed) {
-      return detail::unexpected{
-          title_key_read_error::authentication_flag_lost};
+      return std::unexpected{title_key_read_error::authentication_flag_lost};
     }
     break;
   case 1:
     if (read_failed) {
-      return detail::unexpected{title_key_read_error::read_failed};
+      return std::unexpected{title_key_read_error::read_failed};
     }
     break;
   }

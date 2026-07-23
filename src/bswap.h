@@ -22,78 +22,19 @@
 #ifndef LIBDVDREAD_BSWAP_H
 #define LIBDVDREAD_BSWAP_H
 
-#include <array>
 #include <bit>
-#include <config.h>
-#include <cstddef>
+#include <concepts>
 #include <cstdint>
 #include <type_traits>
 
-template <typename T> constexpr T b2n_fallback_byteswap(T value) noexcept {
-  static_assert(std::is_integral_v<T>);
-
-  auto bytes = std::bit_cast<std::array<std::byte, sizeof(T)>>(value);
-  for (std::size_t i = 0; i < bytes.size() / 2; ++i) {
-    const auto opposite = bytes.size() - 1 - i;
-    const auto tmp = bytes[i];
-    bytes[i] = bytes[opposite];
-    bytes[opposite] = tmp;
-  }
-
-  return std::bit_cast<T>(bytes);
-}
-
-constexpr std::uint16_t b2n_builtin_byteswap(std::uint16_t value) noexcept {
-#if defined(__clang__)
-#if __has_builtin(__builtin_bswap16)
-  return __builtin_bswap16(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-#elif defined(__GNUC__)
-  return __builtin_bswap16(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-}
-
-constexpr std::uint32_t b2n_builtin_byteswap(std::uint32_t value) noexcept {
-#if defined(__clang__)
-#if __has_builtin(__builtin_bswap32)
-  return __builtin_bswap32(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-#elif defined(__GNUC__)
-  return __builtin_bswap32(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-}
-
-constexpr std::uint64_t b2n_builtin_byteswap(std::uint64_t value) noexcept {
-#if defined(__clang__)
-#if __has_builtin(__builtin_bswap64)
-  return __builtin_bswap64(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-#elif defined(__GNUC__)
-  return __builtin_bswap64(value);
-#else
-  return b2n_fallback_byteswap(value);
-#endif
-}
-
-template <typename T> constexpr T b2n_to_native(T value) noexcept {
-  static_assert(std::is_same_v<T, std::uint16_t> ||
-                std::is_same_v<T, std::uint32_t> ||
-                std::is_same_v<T, std::uint64_t>);
+template <std::unsigned_integral T>
+  requires(sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8)
+constexpr T b2n_to_native(T value) noexcept {
 
   if constexpr (std::endian::native == std::endian::big) {
     return value;
   } else {
-    return b2n_builtin_byteswap(value);
+    return std::byteswap(value);
   }
 }
 

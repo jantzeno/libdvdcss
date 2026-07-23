@@ -40,17 +40,17 @@ namespace dvdcss {
 inline constexpr int DVD_KEY_SIZE = 5;
 using dvdcss_key = std::array<uint8_t, DVD_KEY_SIZE>;
 
-typedef struct dvd_title {
+struct dvd_title {
   int i_startlb;
   dvdcss_key p_key;
-} dvd_title;
+};
 
-typedef struct css {
+struct css {
   int i_agid;             /* Current Authentication Grant ID. */
   dvdcss_key p_bus_key;   /* Current session key. */
   dvdcss_key p_disc_key;  /* This DVD disc's key. */
   dvdcss_key p_title_key; /* Current title key. */
-} css;
+};
 
 /*****************************************************************************
  * Prototypes in css.c

@@ -1,90 +1,94 @@
-You are probably looking for this, [libdvdcss](https://www.videolan.org/developers/libdvdcss.html).
+# libdvdcss C++23
 
-# What? and Why?
+This repository is a C++23 implementation of libdvdcss that preserves the
+established C API and shared-library ABI used by applications such as
+HandBrake. It supports CSS for DVD-Video and CPXM (CPPM/CPRM) for DVD-Audio
+and recordable media.
 
-In pursuit of watching [The Complete Collection of Viper](https://www.imdb.com/title/tt0108983/), without needing a DVD player, I needed to build libdvdcss. Out of curiosity I wondered if it could be accomplished, not if it should be accomplished. The result of exercising my software freedom was a file by file conversion to C++ish while maintaining the C API.
+This is an experimental fork and is not affiliated with VideoLAN.
 
-Meson installs to `/usr/local/lib64`.
-I had to create `/etc/ld.so.conf.d/libdvdcss.conf` to point pkg-config to the correct location `/usr/local/lib64`.
+## Supported targets
 
-It works on my machine. This experiment is not maintained or guaranteed. I am not a libdvdcss maintainer. I have no affiliation with VideoLAN.
+| Operating system | Architectures | Toolchains |
+| --- | --- | --- |
+| Linux | x86-64, AArch64 | GCC, Clang |
+| Windows | x86-64, AArch64 | MSVC, MinGW-w64 |
+| macOS | x86-64, Apple silicon | Apple Clang |
 
-# Goals and features
+Meson checks the target and the required C++23 standard-library facilities at
+configure time. Other operating systems and 32-bit targets are intentionally
+rejected.
 
-**Libdvdcss** is a portable abstraction **lib**rary for **DVD** decryption.
+The installed headers remain C11-compatible. Only the implementation requires
+C++23, and only the documented C symbols are exported from the shared library.
 
-It is part of the **VideoLAN** project, which among other things produces **VLC**, a full video client/server streaming solution.  
-**VLC** can also be used as a standalone program to **play video streams** from a hard disk or a DVD.
+## Build and test
 
-**Libdvdcss** is cross-platform and currently supports **GNU/Linux**, **FreeBSD**, **NetBSD**, **OpenBSD**, **Haiku**,
-**Mac OS X**, **Solaris**, **QNX**, **OS/2**, and **Windows** (XP or later).
+Requirements:
 
-**Libdvdcss** supports the CSS decryption scheme for DVD-Video, but incorporates the CPXM decryption for DVD-Audio too.
+- Meson 1.3 or newer
+- Ninja
+- a C11 compiler
+- a C++23 compiler and standard library with `std::byteswap`,
+  `std::expected`, `std::filesystem`, `std::format`, and `std::span`
 
-**Libdvdcss** is small (5K LoC) and written in C, to be more portable.
+```sh
+meson setup build --buildtype=release
+meson compile -C build
+meson test -C build --print-errorlogs
+```
 
-## Building and installing instructions for Libdvdcss
+Install with:
 
-See the [INSTALL file](https://code.videolan.org/videolan/libdvdcss/-/blob/master/INSTALL) for full instructions.
+```sh
+meson install -C build
+```
 
+`pkg-config --cflags --libs libdvdcss` supplies the installed consumer flags.
+See [INSTALL](INSTALL) for cross-compilation and sanitizer builds.
 
-## Running libdvdcss
+Useful Meson options:
 
+- `-Denable_tests=true|false` controls automated tests and defaults to `true`.
+- `-Denable_examples=true|false` builds `csstest` and, on Linux,
+  `dvd_region`; it defaults to `false`.
+- `-Denable_docs=true|false` builds the Doxygen API documentation.
 
-The behavior of the library can be changed by setting two environment variables :
+The automated suite uses in-memory stream fixtures and does not require a DVD
+drive. A physical-disc smoke test remains appropriate before distributing a
+new platform package.
 
-`DVDCSS_METHOD={title|disc|key}`: method for **key decryption** :
+## API compatibility
 
-- **title** : By default the decrypted title key is guessed from the encrypted
-              sectors of the stream. Thus it should work with a file as well as
-              the DVD device. But decrypting a title key may take too much time
-              or even fail. With the **title method**, the key is only checked at
-              the **beginning of each title**, so it will not work if the key
-              changes in the middle of a title.
+The public headers are:
 
-- **disc** :  The disc key is **cracked first**. Afterwards all title keys can be
-              decrypted **instantly**, which allows checking them often.
+- `<dvdcss/dvdcss.h>` for CSS access and decryption
+- `<dvdcss/dvdcpxm.h>` for CPXM access and decryption
 
-- **key** :   The same as the "disc" method if you do not have a file with player
-              keys at compile time. If you do, disc key decryption will be faster.
-              This is the **default method** also employed by libcss.
+The ABI retains the `libdvdcss.so.2` compatibility version and exports exactly
+the documented `dvdcss_*` and `dvdcpxm_*` entry points. C++ exceptions are
+contained at every C boundary and are reported through normal return values
+and `dvdcss_error()`.
 
- 
-`DVDCSS_VERBOSE={0|1|2}`: libdvdcss **verbosity**
+## Runtime configuration
 
-- **0**: no error messages, no debug messages (this is the default)
-- **1**: only error messages
-- **2**: error and debug messages
+`DVDCSS_METHOD={key|disc|title}` selects the CSS key-recovery method:
 
+- `key` uses built-in player keys and is the default.
+- `disc` cracks the disc key before decrypting title keys.
+- `title` derives title keys from encrypted sectors.
 
-## Troubleshooting
+`DVDCSS_VERBOSE={0|1|2}` controls logging. `0` is silent, `1` reports errors,
+and `2` also enables debug output.
 
+`DVDCSS_CACHE=off` disables the key cache. Otherwise, the value names the
+cache directory. If unset, the default is `.dvdcss` beneath the user's home
+directory on Unix-like systems and `dvdcss` beneath AppData on Windows.
 
-A **mailing-list** has been set up for support and discussion about
-libdvdcss. Its address is:
+`DVDCSS_RAW_DEVICE` overrides the raw device used for authentication while
+reading through another target.
 
-   <libdvdcss-devel@videolan.org>
+## License
 
-To subscribe or unsubscribe, go [here](http://mailman.videolan.org/).
-
-
-When reporting **bugs**, try to be as **precise** as possible (which OS, which
-distribution, what plugins you were trying, and so on).
-
-## CoC
-
-The [VideoLAN Code of Conduct](https://wiki.videolan.org/CoC) applies to this project.
-
-## Licence
-
-**Libdvdcss** is released under the **General Public License**, ensuring it will stay free, and used only for free software products.
-
-## Resources
-
-
-The [VideoLAN web site](https://www.videolan.org/) is a good start for
-information about MPEG and DVD playback. 
-
-Have a look at the [support section](https://www.videolan.org/support/) to look for answers.
-
-You can also have a look to [the documentation](https://videolan.videolan.me/libdvdcss/).
+libdvdcss is distributed under the GNU General Public License, version 2 or
+later. See [COPYING](COPYING).
