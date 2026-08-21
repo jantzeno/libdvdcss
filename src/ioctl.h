@@ -25,21 +25,23 @@
 
 #include <stdint.h>
 
-int ioctl_ReadCopyright     ( int, int, int * );
-int ioctl_ReadDiscKey       ( int, const int *, uint8_t * );
-int ioctl_ReadTitleKey      ( int, const int *, int, uint8_t * );
-int ioctl_ReportAgid        ( int, int * );
-int ioctl_ReportChallenge   ( int, const int *, uint8_t * );
-int ioctl_ReportKey1        ( int, const int *, uint8_t * );
-int ioctl_ReportASF         ( int, int * );
-int ioctl_InvalidateAgid    ( int, int * );
-int ioctl_SendChallenge     ( int, const int *, const uint8_t * );
-int ioctl_SendKey2          ( int, const int *, const uint8_t * );
-int ioctl_ReportRPC         ( int, int *, int *, int * );
+#include "common.h"
+
+int ioctl_ReadCopyright     ( dvdcss_fd_t, int, int * );
+int ioctl_ReadDiscKey       ( dvdcss_fd_t, const int *, uint8_t * );
+int ioctl_ReadTitleKey      ( dvdcss_fd_t, const int *, int, uint8_t * );
+int ioctl_ReportAgid        ( dvdcss_fd_t, int * );
+int ioctl_ReportChallenge   ( dvdcss_fd_t, const int *, uint8_t * );
+int ioctl_ReportKey1        ( dvdcss_fd_t, const int *, uint8_t * );
+int ioctl_ReportASF         ( dvdcss_fd_t, int * );
+int ioctl_InvalidateAgid    ( dvdcss_fd_t, int * );
+int ioctl_SendChallenge     ( dvdcss_fd_t, const int *, const uint8_t * );
+int ioctl_SendKey2          ( dvdcss_fd_t, const int *, const uint8_t * );
+int ioctl_ReportRPC         ( dvdcss_fd_t, int *, int *, int * );
 
 /* Special Ioctl functions for cpxm decryption */
-int ioctl_ReadCPRMMKBPack   ( int, int*, int, uint8_t *, int * );
-int ioctl_ReadCPRMMediaId   ( int, int *, uint8_t * );
+int ioctl_ReadCPRMMKBPack   ( dvdcss_fd_t, int*, int, uint8_t *, int * );
+int ioctl_ReadCPRMMediaId   ( dvdcss_fd_t, int *, uint8_t * );
 
 #define DVD_DISCKEY_SIZE 2048
 

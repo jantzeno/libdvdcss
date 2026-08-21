@@ -31,6 +31,7 @@
 #   include <sys/param.h>
 #endif
 
+#include "common.h"
 #include "dvdcss/dvdcss.h"
 #include "cpxm.h"
 #include "css.h"
@@ -51,7 +52,7 @@ struct dvdcss_s
 {
     /* File descriptor */
     char * psz_device;
-    int    i_fd;
+    dvdcss_fd_t i_fd;
     int    i_pos;
 
     /* File handling */
