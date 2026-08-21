@@ -12,5 +12,5 @@
         "NEWS",
         "README.md",
     },
-    .fingerprint = 0xaf726dd3dd65eb21, // Changing this has security and trust implications.
+    .fingerprint = 0x59efc7ff9fc83193, // Changing this has security and trust implications.
 }
