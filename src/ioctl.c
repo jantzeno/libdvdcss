@@ -1014,25 +1014,25 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd,int *p_agid, uint8_t *p_data_buffer)
     struct sg_io_hdr io_hdr;
     uint8_t sense[32] = {0};  
     uint8_t cdb[12] = {0};
-    uint8_t *data_buf = malloc(CPRM_MEDIA_ID_SIZE + 4); 
+    uint8_t *data_buf = malloc(CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE);
 
     if (!data_buf)
         i_ret = -1;
 
     memset(&io_hdr, 0, sizeof(io_hdr));
-    memset(data_buf, 0, CPRM_MEDIA_ID_SIZE + 4);
+    memset(data_buf, 0, CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE);
 
     cdb[0] = GPCMD_READ_DVD_STRUCTURE;
     cdb[7] = CPRM_STRUCT_MEDIA_ID;
-    cdb[8] = (uint8_t)((CPRM_MEDIA_ID_SIZE + 4) >> 8);
-    cdb[9] = (uint8_t)((CPRM_MEDIA_ID_SIZE + 4) & 0xff);
+    cdb[8] = (uint8_t)((CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE) >> 8);
+    cdb[9] = (uint8_t)((CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE) & 0xff);
     cdb[10] = (*p_agid << 6);
 
     io_hdr.interface_id = 'S';
     io_hdr.dxfer_direction = SG_DXFER_FROM_DEV;
     io_hdr.cmd_len = sizeof(cdb);
     io_hdr.mx_sb_len = sizeof(sense);
-    io_hdr.dxfer_len = CPRM_MEDIA_ID_SIZE + 4;
+    io_hdr.dxfer_len = CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE;
     io_hdr.dxferp = data_buf;
     io_hdr.cmdp = cdb;
     io_hdr.sbp = sense;
@@ -1044,7 +1044,8 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd,int *p_agid, uint8_t *p_data_buffer)
         i_ret = -1;
     }
 
-    memcpy(p_data_buffer, data_buf + 4, CPRM_MEDIA_ID_SIZE);
+    memcpy(p_data_buffer, data_buf + CPRM_RESPONSE_HEADER_SIZE,
+           CPRM_MEDIA_ID_SIZE);
     free(data_buf);
     i_ret = 0;
 
@@ -1053,7 +1054,7 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd,int *p_agid, uint8_t *p_data_buffer)
     SCSI_PASS_THROUGH_DIRECT sptd = { 0 };
     sptd.Length = sizeof( SCSI_PASS_THROUGH_DIRECT );
     sptd.DataBuffer = p_data_buffer;
-    sptd.DataTransferLength = CPRM_MEDIA_ID_SIZE + 4 ;
+    sptd.DataTransferLength = CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE;
 
     WinInitSPTD( &sptd, GPCMD_READ_DVD_STRUCTURE );
 
@@ -1067,12 +1068,12 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd,int *p_agid, uint8_t *p_data_buffer)
 
     if (i_ret == 0)
         memmove(p_data_buffer,
-            p_data_buffer + 4,
+            p_data_buffer + CPRM_RESPONSE_HEADER_SIZE,
             CPRM_MEDIA_ID_SIZE);
 
 #elif defined( DARWIN_DVD_IOCTL )
     dk_dvd_read_structure_t dvd = { 0 };
-    uint8_t dvdbs[CPRM_MEDIA_ID_SIZE + 4] = { 0 };
+    uint8_t dvdbs[CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE] = { 0 };
     dvd.format = CPRM_STRUCT_MEDIA_ID;
     dvd.buffer = &dvdbs;
     dvd.bufferLength = sizeof(dvdbs);
@@ -1081,10 +1082,12 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd,int *p_agid, uint8_t *p_data_buffer)
 
     i_ret = ioctl( i_fd, DKIOCDVDREADSTRUCTURE, &dvd );
     if (i_ret == 0)
-        memcpy(p_data_buffer, dvdbs + 4, CPRM_MEDIA_ID_SIZE);
+        memcpy(p_data_buffer, dvdbs + CPRM_RESPONSE_HEADER_SIZE,
+               CPRM_MEDIA_ID_SIZE);
 
 #elif defined( __OS2__ )
-    INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MEDIA_ID_SIZE + 4);
+    INIT_SSC(GPCMD_READ_DVD_STRUCTURE,
+             CPRM_MEDIA_ID_SIZE + CPRM_RESPONSE_HEADER_SIZE);
 
     sdc.command[7] = CPRM_STRUCT_MEDIA_ID;
     sdc.command[10] = *p_agid << 6;
@@ -1111,14 +1114,14 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
     int i_ret;
 
 #if (defined( HAVE_LINUX_DVD_STRUCT ) && defined( HAVE_SCSI_SG_H )) || (defined( HAVE_BSD_DVD_STRUCT ) && defined( HAVE_CAM_SCSI_SCSI_SG_H ))
-    uint8_t *sptd_buf = malloc( CPRM_MKB_PACK_SIZE + 4 );
+    uint8_t *sptd_buf = malloc( CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE );
     uint8_t cdb[12] = { 0 };
     uint8_t sense[32] = { 0 };
 
     if ( !sptd_buf )
         i_ret = -1;
 
-    memset( sptd_buf, 0, CPRM_MKB_PACK_SIZE + 4 );
+    memset( sptd_buf, 0, CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE );
 
     cdb[0] = GPCMD_READ_DVD_STRUCTURE;
     cdb[2] = (uint8_t)( ( mkb_pack >> 24 ) & 0xFF );
@@ -1126,8 +1129,8 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
     cdb[4] = (uint8_t)( ( mkb_pack >> 8 )  & 0xFF );
     cdb[5] = (uint8_t)( mkb_pack & 0xFF );
     cdb[7] = CPRM_STRUCT_MKB;
-    cdb[8] = ( uint8_t )( ( CPRM_MKB_PACK_SIZE + 4 ) >> 8 );
-    cdb[9] = ( uint8_t )( ( CPRM_MKB_PACK_SIZE + 4 ) & 0xFF );
+    cdb[8] = ( uint8_t )( ( CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE ) >> 8 );
+    cdb[9] = ( uint8_t )( ( CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE ) & 0xFF );
     cdb[10] = *p_agid << 6;
 
     struct sg_io_hdr io_hdr;
@@ -1137,7 +1140,7 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
     io_hdr.dxfer_direction = SG_DXFER_FROM_DEV;
     io_hdr.cmd_len = sizeof( cdb );
     io_hdr.mx_sb_len = sizeof( sense );
-    io_hdr.dxfer_len = CPRM_MKB_PACK_SIZE + 4;
+    io_hdr.dxfer_len = CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE;
     io_hdr.dxferp = sptd_buf;
     io_hdr.cmdp = cdb;
     io_hdr.sbp = sense;
@@ -1150,13 +1153,14 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
         i_ret = -1;
     }
 
-    *p_total_packs = sptd_buf[3];
-    memcpy( p_mkb_pack, sptd_buf + 4, CPRM_MKB_PACK_SIZE );
+    *p_total_packs = sptd_buf[CPRM_MKB_PACK_COUNT_OFFSET];
+    memcpy( p_mkb_pack, sptd_buf + CPRM_RESPONSE_HEADER_SIZE,
+            CPRM_MKB_PACK_SIZE );
     free( sptd_buf );
 
 #elif defined( DARWIN_DVD_IOCTL )
     dk_dvd_read_structure_t dvd = { 0 };
-    uint8_t dvdbs[CPRM_MKB_PACK_SIZE + 4] = { 0 };
+    uint8_t dvdbs[CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE] = { 0 };
     dvd.address = (uint64_t)mkb_pack;
     dvd.format = CPRM_STRUCT_MKB;
     dvd.buffer = &dvdbs;
@@ -1167,17 +1171,18 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
     i_ret = ioctl( i_fd, DKIOCDVDREADSTRUCTURE, &dvd );
     if ( i_ret == 0 )
     {
-        *p_total_packs = dvdbs[3];
-        memcpy( p_mkb_pack, dvdbs + 4, CPRM_MKB_PACK_SIZE );
+        *p_total_packs = dvdbs[CPRM_MKB_PACK_COUNT_OFFSET];
+        memcpy( p_mkb_pack, dvdbs + CPRM_RESPONSE_HEADER_SIZE,
+                CPRM_MKB_PACK_SIZE );
     }
 
 #elif defined( _WIN32 )
     DWORD tmp;
     SCSI_PASS_THROUGH_DIRECT sptd = { 0 };
-    uint8_t p_buffer[CPRM_MKB_PACK_SIZE + 4];
+    uint8_t p_buffer[CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE];
     sptd.Length = sizeof( SCSI_PASS_THROUGH_DIRECT );
     sptd.DataBuffer = p_buffer;
-    sptd.DataTransferLength = CPRM_MKB_PACK_SIZE + 4;
+    sptd.DataTransferLength = CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE;
 
     WinInitSPTD( &sptd, GPCMD_READ_DVD_STRUCTURE );
 
@@ -1195,13 +1200,15 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
 
     if ( i_ret == 0 )
     {
-        *p_total_packs = p_buffer[3];
-        memcpy( p_mkb_pack, p_buffer + 4, CPRM_MKB_PACK_SIZE );
+        *p_total_packs = p_buffer[CPRM_MKB_PACK_COUNT_OFFSET];
+        memcpy( p_mkb_pack, p_buffer + CPRM_RESPONSE_HEADER_SIZE,
+                CPRM_MKB_PACK_SIZE );
     }
     return i_ret;
 
 #elif defined( __OS2__ )
-    INIT_SSC(GPCMD_READ_DVD_STRUCTURE, CPRM_MKB_PACK_SIZE + 4);
+    INIT_SSC(GPCMD_READ_DVD_STRUCTURE,
+             CPRM_MKB_PACK_SIZE + CPRM_RESPONSE_HEADER_SIZE);
 
     sdc.command[2] = (uint8_t)((mkb_pack >> 24) & 0xFF);
     sdc.command[3] = (uint8_t)((mkb_pack >> 16) & 0xFF);
@@ -1215,8 +1222,9 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack, uint8_t *
                         p_buffer, sizeof(p_buffer), &ulDataLen);
     if (i_ret == 0)
     {
-        *p_total_packs = p_buffer[3];
-        memcpy(p_mkb_pack, p_buffer + 4, CPRM_MKB_PACK_SIZE);
+        *p_total_packs = p_buffer[CPRM_MKB_PACK_COUNT_OFFSET];
+        memcpy(p_mkb_pack, p_buffer + CPRM_RESPONSE_HEADER_SIZE,
+               CPRM_MKB_PACK_SIZE);
     }
 
 #else

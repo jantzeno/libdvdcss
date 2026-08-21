@@ -45,6 +45,10 @@
 #define CPRM_MKB_PACK_SIZE   24576
 #define CPRM_MKB_SIZE        (16 * CPRM_MKB_PACK_SIZE - 16)
 
+/* READ DVD STRUCTURE response layout used by the CPRM formats. */
+#define CPRM_RESPONSE_HEADER_SIZE    4
+#define CPRM_MKB_PACK_COUNT_OFFSET   3
+
 #define CCI_BYTE 0x00;
 
 #include <stdint.h>
