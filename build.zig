@@ -41,14 +41,14 @@ pub fn build(b: *std.Build) void {
         \\#ifndef DVDCSS_VERSION_H_
         \\#define DVDCSS_VERSION_H_
         \\
-        \\#define DVDCSS_VERSION_CODE(major, minor, micro) \\
+        \\#define DVDCSS_VERSION_CODE(major, minor, micro) \
         \\    (((major) * 10000) + ((minor) * 100) + (micro))
         \\
         \\#define DVDCSS_VERSION_MAJOR 1
         \\#define DVDCSS_VERSION_MINOR 6
         \\#define DVDCSS_VERSION_MICRO 0
         \\#define DVDCSS_VERSION_STRING "1.6.0"
-        \\#define DVDCSS_VERSION \\
+        \\#define DVDCSS_VERSION \
         \\    DVDCSS_VERSION_CODE(DVDCSS_VERSION_MAJOR, DVDCSS_VERSION_MINOR, DVDCSS_VERSION_MICRO)
         \\
         \\#endif /* DVDCSS_VERSION_H_ */
