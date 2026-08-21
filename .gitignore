@@ -35,5 +35,9 @@
 /test/csstest
 /test/dvd_region
 /build*
+!/build.zig
+!/build.zig.zon
+/.zig-cache/
+/zig-out/
 /releases*
 /tarballs*

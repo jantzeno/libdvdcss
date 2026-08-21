@@ -1,0 +1,14 @@
+dvdcpxm_close
+dvdcpxm_init
+dvdcpxm_read
+dvdcpxm_readv
+dvdcpxm_seek
+dvdcss_close
+dvdcss_error
+dvdcss_get_encryption_type
+dvdcss_is_scrambled
+dvdcss_open
+dvdcss_open_stream
+dvdcss_read
+dvdcss_readv
+dvdcss_seek

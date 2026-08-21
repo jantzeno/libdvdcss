@@ -53,6 +53,9 @@
 #   include <IOKit/storage/IOMedia.h>
 #   include <IOKit/storage/IOCDMedia.h>
 #   include <IOKit/storage/IODVDMedia.h>
+#   if !defined( MAC_OS_VERSION_12_0 )
+#       define IOMainPort IOMasterPort
+#   endif
 #endif
 
 #ifdef __OS2__
@@ -65,6 +68,7 @@
 
 #ifdef _WIN32
 #   include <windows.h>
+#   define DVDCSS_TO_HANDLE(fd) ((HANDLE)(intptr_t)(fd))
 #endif
 
 #include "dvdcss/dvdcss.h"
@@ -237,7 +241,7 @@ void dvdcss_check_device ( dvdcss_t dvdcss )
     }
 #elif defined( DARWIN_DVD_IOCTL )
 
-    kern_result = IOMasterPort( MACH_PORT_NULL, &master_port );
+    kern_result = IOMainPort( MACH_PORT_NULL, &master_port );
     if( kern_result != KERN_SUCCESS )
     {
         return;
@@ -427,7 +431,7 @@ int dvdcss_close_device ( dvdcss_t dvdcss )
 
     if( !dvdcss->b_file )
     {
-        CloseHandle( (HANDLE) dvdcss->i_fd );
+        CloseHandle( DVDCSS_TO_HANDLE( dvdcss->i_fd ) );
     }
     else
 #endif
@@ -527,7 +531,7 @@ static int win2k_open ( dvdcss_t dvdcss, const char *psz_device )
         return -1;
     }
 
-    dvdcss->i_fd = (int) h_fd;
+    dvdcss->i_fd = (dvdcss_fd_t)(intptr_t) h_fd;
     dvdcss->i_pos = 0;
 
     return 0;
@@ -631,7 +635,7 @@ static int win2k_seek( dvdcss_t dvdcss, int i_blocks )
 
     li_seek.QuadPart = (LONGLONG)i_blocks * DVDCSS_BLOCK_SIZE;
 
-    li_seek.LowPart = SetFilePointer( (HANDLE) dvdcss->i_fd,
+    li_seek.LowPart = SetFilePointer( DVDCSS_TO_HANDLE( dvdcss->i_fd ),
                                       li_seek.LowPart,
                                       &li_seek.HighPart, FILE_BEGIN );
     if( (li_seek.LowPart == INVALID_SET_FILE_POINTER)
@@ -732,7 +736,7 @@ static int win2k_read ( dvdcss_t dvdcss, void *p_buffer, int i_blocks )
 {
     DWORD i_bytes;
 
-    if( !ReadFile( (HANDLE) dvdcss->i_fd, p_buffer,
+    if( !ReadFile( DVDCSS_TO_HANDLE( dvdcss->i_fd ), p_buffer,
               i_blocks * DVDCSS_BLOCK_SIZE,
               &i_bytes, NULL ) )
     {
@@ -880,7 +884,7 @@ static int win2k_readv ( dvdcss_t dvdcss, const struct iovec *p_iovec,
 
     if( i_blocks_total <= 0 ) return 0;
 
-    if( !ReadFile( (HANDLE)dvdcss->i_fd, dvdcss->p_readv_buffer,
+    if( !ReadFile( DVDCSS_TO_HANDLE( dvdcss->i_fd ), dvdcss->p_readv_buffer,
                    i_blocks_total, &i_bytes, NULL ) )
     {
         /* The read failed... too bad.

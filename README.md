@@ -16,6 +16,29 @@ It is part of the **VideoLAN** project, which among other things produces **VLC*
 
 See the [INSTALL file](https://code.videolan.org/videolan/libdvdcss/-/blob/master/INSTALL) for full instructions.
 
+### Zig build
+
+The Zig build requires Zig 0.16.0 or newer and currently supports Linux,
+macOS, and Windows. It builds a static library by default:
+
+```sh
+zig build
+zig build test
+```
+
+Use `-Dlinkage=dynamic` for a shared library, and `-Dexamples=true` to
+install the `csstest` example. Standard Zig target and optimization options
+are supported, for example:
+
+```sh
+zig build -Dlinkage=dynamic -Doptimize=ReleaseFast
+zig build -Dtarget=x86_64-windows-gnu
+```
+
+The smoke test validates the public C API and the missing-device error path.
+Testing DVD authentication and decryption still requires suitable physical or
+image-based media fixtures.
+
 
 ## Running libdvdcss
 
