@@ -60,7 +60,6 @@ typedef struct css
 int dvdcss_test       ( dvdcss_t );
 int dvdcss_title      ( dvdcss_t, int );
 int dvdcss_disckey    ( dvdcss_t );
-/* Match css.c's array-parameter spelling under -Warray-parameter. */
 int dvdcss_unscramble ( dvd_key, uint8_t * );
 
 /* exported for USB authentification in CPXM */
