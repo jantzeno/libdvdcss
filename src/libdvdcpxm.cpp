@@ -433,12 +433,13 @@ std::vector<uint8_t> cprm_get_mkb(dvdcss_t dvdcss) {
     return {};
   }
 
+  const int total_packs = mkb_packs;
   std::vector<uint8_t> mkb(
-      static_cast<std::size_t>(mkb_packs) * CPRM_MKB_PACK_SIZE - 16);
+      static_cast<std::size_t>(total_packs) * CPRM_MKB_PACK_SIZE - 16);
 
   memcpy(mkb.data(), &mkb_pack[16], CPRM_MKB_PACK_SIZE - 16);
 
-  for (int i = 1; i < mkb_packs; ++i) {
+  for (int i = 1; i < total_packs; ++i) {
     const std::size_t offset =
         static_cast<std::size_t>(i) * CPRM_MKB_PACK_SIZE - 16;
     if (ioctl_ReadCPRMMKBPack(
