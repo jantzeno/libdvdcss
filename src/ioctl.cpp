@@ -613,18 +613,14 @@ int ioctl_ReadCPRMMediaId(dvdcss_fd_t i_fd, int *p_agid,
     memcpy(p_data_buffer.data(), raw_buffer.data() + 4, CPRM_MEDIA_ID_SIZE);
 
 #elif defined(DARWIN_DVD_IOCTL)
-  int h_dvd;
-  dk_dvd_read_structure_t dvd;
-  uint8_t dvdbs[CPRM_MEDIA_ID_SIZE + 4];
-  dvd.format = CPRM_STRUCT_MEDIA_ID;
-  dvd.buffer = &dvdbs;
-  dvd.bufferLength = sizeof(dvdbs);
+  DarwinDvdIoctlRequest<dk_dvd_read_structure_t,
+                        uint8_t[CPRM_MEDIA_ID_SIZE + 4]>
+      request{CPRM_STRUCT_MEDIA_ID};
+  request.command.grantID = *p_agid;
 
-  dvd.grantID = *p_agid;
-
-  i_ret = ioctl(h_dvd, DKIOCDVDREADSTRUCTURE, &dvd);
+  i_ret = ioctl(i_fd, DKIOCDVDREADSTRUCTURE, &request.command);
   if (i_ret == 0)
-    memcpy(p_data_buffer.data(), dvd.buffer, CPRM_MEDIA_ID_SIZE);
+    memcpy(p_data_buffer.data(), request.buffer + 4, CPRM_MEDIA_ID_SIZE);
 
 #else
 #error "DVD ioctls are unavailable on this system"
@@ -680,18 +676,17 @@ int ioctl_ReadCPRMMKBPack(dvdcss_fd_t i_fd, int *p_agid, int mkb_pack,
   }
 
 #elif defined(DARWIN_DVD_IOCTL)
-  int h_dvd;
-  dk_dvd_read_structure_t dvd;
-  uint8_t dvdbs[CPRM_MKB_PACK_SIZE];
-  dvd.format = CPRM_STRUCT_MKB;
-  dvd.buffer = &dvdbs;
-  dvd.bufferLength = sizeof(dvdbs);
+  DarwinDvdIoctlRequest<dk_dvd_read_structure_t,
+                        uint8_t[CPRM_MKB_PACK_SIZE + 4]>
+      request{CPRM_STRUCT_MKB};
+  request.command.address = mkb_pack;
+  request.command.grantID = *p_agid;
 
-  dvd.grantID = *p_agid;
-
-  i_ret = ioctl(h_dvd, DKIOCDVDREADSTRUCTURE, &dvd);
-  if (i_ret == 0)
-    memcpy(p_mkb_pack.data(), dvd.buffer, CPRM_MKB_PACK_SIZE);
+  i_ret = ioctl(i_fd, DKIOCDVDREADSTRUCTURE, &request.command);
+  if (i_ret == 0) {
+    *p_total_packs = request.buffer[3];
+    memcpy(p_mkb_pack.data(), request.buffer + 4, CPRM_MKB_PACK_SIZE);
+  }
 
 #elif defined(_WIN32)
   DWORD tmp;
