@@ -29,9 +29,9 @@
 #include "config.h"
 
 #include <cstddef>
-#include <iterator>
 #include <limits>
 #include <optional>
+#include <ranges>
 #include <span>
 
 /*****************************************************************************
@@ -92,42 +92,19 @@ using ScatterBuffer = std::span<uint8_t>;
 
 class ScatterBuffers {
 public:
-  class iterator {
-  public:
-    using difference_type = std::ptrdiff_t;
-    using value_type = ScatterBuffer;
-    using iterator_category = std::forward_iterator_tag;
-
-    [[nodiscard]] value_type operator*() const noexcept {
-      return {static_cast<uint8_t *>(current_->iov_base), current_->iov_len};
-    }
-
-    iterator &operator++() noexcept {
-      ++current_;
-      return *this;
-    }
-
-    [[nodiscard]] bool operator==(const iterator &) const noexcept = default;
-
-  private:
-    friend class ScatterBuffers;
-    explicit iterator(struct iovec *current) noexcept : current_(current) {}
-    struct iovec *current_;
-  };
-
   ScatterBuffers() noexcept = default;
   ScatterBuffers(struct iovec *iovecs, std::size_t count) noexcept
-      : iovecs_(iovecs), count_(count) {}
+      : iovecs_(iovecs, count) {}
 
-  [[nodiscard]] bool empty() const noexcept { return count_ == 0; }
-  [[nodiscard]] std::size_t size() const noexcept { return count_; }
-  [[nodiscard]] struct iovec *raw_data() const noexcept { return iovecs_; }
+  [[nodiscard]] bool empty() const noexcept { return iovecs_.empty(); }
+  [[nodiscard]] std::size_t size() const noexcept { return iovecs_.size(); }
+  [[nodiscard]] struct iovec *raw_data() const noexcept { return iovecs_.data(); }
 
   [[nodiscard]] std::optional<std::size_t> byte_size() const noexcept {
     std::size_t total = 0;
-    for (std::size_t index = 0; index < count_; ++index) {
-      const auto &entry = iovecs_[index];
+    for (const auto &entry : iovecs_) {
       if ((entry.iov_base == nullptr && entry.iov_len != 0) ||
+          entry.iov_len % DVDCSS_BLOCK_SIZE != 0 ||
           entry.iov_len > std::numeric_limits<std::size_t>::max() - total) {
         return std::nullopt;
       }
@@ -136,19 +113,14 @@ public:
     return total;
   }
 
-  [[nodiscard]] ScatterBuffer operator[](std::size_t index) const noexcept {
-    return {static_cast<uint8_t *>(iovecs_[index].iov_base),
-            iovecs_[index].iov_len};
-  }
-
-  [[nodiscard]] iterator begin() const noexcept { return iterator{iovecs_}; }
-  [[nodiscard]] iterator end() const noexcept {
-    return iterator{count_ == 0 ? iovecs_ : iovecs_ + count_};
+  [[nodiscard]] auto entries() const noexcept {
+    return iovecs_ | std::views::transform([](const iovec &entry) noexcept {
+      return ScatterBuffer{static_cast<uint8_t *>(entry.iov_base), entry.iov_len};
+    });
   }
 
 private:
-  struct iovec *iovecs_ = nullptr;
-  std::size_t count_ = 0;
+  std::span<iovec> iovecs_;
 };
 
 using DeviceReadv = int (*)(dvdcss_t, ScatterBuffers);

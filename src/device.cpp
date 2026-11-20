@@ -662,7 +662,7 @@ static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   int i_total_bytes = 0;
   int i_bytes;
 
-  for (auto buffer : buffers) {
+  for (auto buffer : buffers.entries()) {
     const int i_len = static_cast<int>(buffer.size());
 
     if (i_len <= 0) {
@@ -777,7 +777,7 @@ static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   DWORD i_bytes;
   size_t requested_size = 0;
 
-  for (auto buffer : buffers) {
+  for (auto buffer : buffers.entries()) {
     requested_size += buffer.size();
     i_total_bytes += static_cast<int>(buffer.size());
   }
@@ -817,11 +817,14 @@ static int win2k_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   std::size_t bytes_remaining =
       static_cast<std::size_t>(i_blocks_read) * DVDCSS_BLOCK_SIZE;
   std::size_t source_offset = 0;
-  for (auto buffer : buffers) {
-    const std::size_t bytes_to_copy = std::min(buffer.size(), bytes_remaining);
-    if (bytes_to_copy == 0) {
+  for (auto buffer : buffers.entries()) {
+    if (bytes_remaining == 0) {
       break;
     }
+    if (buffer.empty()) {
+      continue;
+    }
+    const std::size_t bytes_to_copy = std::min(buffer.size(), bytes_remaining);
     memcpy(buffer.data(), dvdcss->p_readv_buffer.data() + source_offset,
            bytes_to_copy);
     source_offset += bytes_to_copy;

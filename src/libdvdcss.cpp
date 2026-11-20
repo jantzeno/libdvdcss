@@ -141,7 +141,6 @@ using std::format;
 using std::getenv;
 using std::memcpy;
 using std::strcmp;
-using std::strlen;
 
 using namespace dvdcss;
 
@@ -315,14 +314,12 @@ static int set_cache_directory(dvdcss_t dvdcss) {
 }
 
 static int init_cache_dir(dvdcss_t dvdcss) {
-  static const char psz_tag[] =
+  static constexpr std::string_view tag =
       "Signature: 8a477f597d28d172789f06886806bc55\r\n"
       "# This file is a cache directory tag created by libdvdcss.\r\n"
       "# For information about cache directory tags, see:\r\n"
       "#   http://www.brynosaurus.com/cachedir/\r\n";
-  int i_fd, i_ret;
-
-  i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
+  const int i_ret = create_directories_if_needed(dvdcss->psz_cachefile);
   if (i_ret < 0 && errno != EEXIST) {
     print_error(dvdcss, "failed creating cache directory '%s'",
                 dvdcss->psz_cachefile.string().c_str());
@@ -332,13 +329,13 @@ static int init_cache_dir(dvdcss_t dvdcss) {
 
   const auto tagfile = dvdcss->psz_cachefile / kCacheTagName;
   const auto tagfile_string = tagfile.string();
-  i_fd = open(tagfile_string.c_str(), O_RDWR | O_CREAT, 0644);
-  if (i_fd >= 0) {
-    const std::size_t len = strlen(psz_tag);
-    if (write(i_fd, psz_tag, len) < static_cast<ssize_t>(len)) {
+  ScopedFd fd;
+  fd.reset(open(tagfile_string.c_str(), O_RDWR | O_CREAT, 0644));
+  if (fd.is_valid()) {
+    if (write(fd.get(), tag.data(), tag.size()) <
+        static_cast<ssize_t>(tag.size())) {
       print_error(dvdcss, "Error writing cache directory tag, continuing..\n");
     }
-    close(i_fd);
   }
   return 0;
 }
@@ -764,8 +761,7 @@ static int dvdcss_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
   struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
   auto buffers = make_scatter_buffers(_p_iovec, i_blocks);
   const auto byte_size = buffers.byte_size();
-  if (!byte_size || *byte_size > std::numeric_limits<int>::max() ||
-      (*byte_size % DVDCSS_BLOCK_SIZE) != 0) {
+  if (!byte_size || *byte_size > std::numeric_limits<int>::max()) {
     print_error(dvdcss, "invalid scatter buffer layout");
     return -1;
   }
@@ -780,7 +776,7 @@ static int dvdcss_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
   int blocks_remaining = i_ret;
 
   /* Decrypt the blocks we managed to read */
-  for (auto buffer : buffers) {
+  for (auto buffer : buffers.entries()) {
     for (size_t offset = 0; offset < buffer.size() && blocks_remaining > 0;
          offset += DVDCSS_BLOCK_SIZE, --blocks_remaining) {
       auto sector = buffer.subspan(offset, DVDCSS_BLOCK_SIZE);

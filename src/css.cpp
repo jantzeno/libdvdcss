@@ -220,7 +220,8 @@ int dvdcss_test(dvdcss_t dvdcss) {
  *****************************************************************************/
 int dvdcss_title(dvdcss_t dvdcss, int i_block) {
   dvdcss_key p_title_key = {};
-  int i_fd, i_ret = -1, b_cache = 0;
+  int i_ret = -1;
+  bool b_cache = false;
   auto title_it =
       std::lower_bound(dvdcss->p_titles.begin(), dvdcss->p_titles.end(),
                        i_block, [](const dvd_title &title, int block) {
@@ -243,16 +244,17 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
     const auto cache_path = build_cache_block_path(dvdcss, i_block);
     const auto cache_path_string = cache_path.string();
 
-    i_fd = open(cache_path_string.c_str(), O_RDONLY);
-    b_cache = 1;
+    ScopedFd fd;
+    fd.reset(open(cache_path_string.c_str(), O_RDONLY));
+    b_cache = true;
 
-    if (i_fd >= 0) {
+    if (fd.is_valid()) {
       char psz_key[kPszKeySize];
       unsigned int k0, k1, k2, k3, k4;
 
       psz_key[kPszKeySize - 1] = '\0';
 
-      if (read(i_fd, psz_key, kPszKeySize - 1) == kPszKeySize - 1 &&
+      if (read(fd.get(), psz_key, kPszKeySize - 1) == kPszKeySize - 1 &&
           sscanf(psz_key, "%x:%x:%x:%x:%x", &k0, &k1, &k2, &k3, &k4) == 5) {
         p_title_key = {static_cast<uint8_t>(k0), static_cast<uint8_t>(k1),
                        static_cast<uint8_t>(k2), static_cast<uint8_t>(k3),
@@ -260,11 +262,9 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
         PrintKey(dvdcss, "title key found in cache ", std::span{p_title_key});
 
         /* Don't try to save it again */
-        b_cache = 0;
+        b_cache = false;
         i_ret = 1;
       }
-
-      close(i_fd);
     }
   }
 
@@ -290,17 +290,17 @@ int dvdcss_title(dvdcss_t dvdcss, int i_block) {
     const auto cache_path = build_cache_block_path(dvdcss, i_block);
     const auto cache_path_string = cache_path.string();
 
-    i_fd = open(cache_path_string.c_str(), O_RDWR | O_CREAT, 0644);
-    if (i_fd >= 0) {
+    ScopedFd fd;
+    fd.reset(open(cache_path_string.c_str(), O_RDWR | O_CREAT, 0644));
+    if (fd.is_valid()) {
       const std::string key_text = std::format(
           "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\r\n", p_title_key[0],
           p_title_key[1], p_title_key[2], p_title_key[3], p_title_key[4]);
 
-      if (write(i_fd, key_text.data(), key_text.size()) <
+      if (write(fd.get(), key_text.data(), key_text.size()) <
           static_cast<ssize_t>(key_text.size())) {
         print_error(dvdcss, "Error caching key on disk, continuing..\n");
       }
-      close(i_fd);
     }
   }
 

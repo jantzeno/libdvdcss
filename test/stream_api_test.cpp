@@ -164,6 +164,20 @@ int main() {
     return 9;
   }
 
+  const auto position_before_invalid_read = stream.position;
+  std::array<TestIovec, 2> unaligned_iovecs{{
+      {first.data(), first.size() / 2},
+      {second.data(), second.size() / 2},
+  }};
+  const auto unaligned_count = static_cast<int>(unaligned_iovecs.size());
+  if (dvdcss_readv(handle, unaligned_iovecs.data(), unaligned_count,
+                   DVDCSS_NOFLAGS) != -1 ||
+      dvdcpxm_readv(handle, unaligned_iovecs.data(), unaligned_count,
+                    DVDCSS_NOFLAGS) != -1 ||
+      stream.position != position_before_invalid_read) {
+    return 18;
+  }
+
   if (dvdcss_seek(handle, 8, DVDCSS_NOFLAGS) != 8) {
     return 10;
   }

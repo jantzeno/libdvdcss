@@ -949,8 +949,7 @@ static int dvdcpxm_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
   struct iovec *_p_iovec = static_cast<struct iovec *>(p_iovec);
   auto buffers = make_scatter_buffers(_p_iovec, i_blocks);
   const auto byte_size = buffers.byte_size();
-  if (!byte_size || *byte_size > std::numeric_limits<int>::max() ||
-      (*byte_size % DVDCSS_BLOCK_SIZE) != 0) {
+  if (!byte_size || *byte_size > std::numeric_limits<int>::max()) {
     print_error(dvdcss, "invalid scatter buffer layout");
     return -1;
   }
@@ -970,7 +969,7 @@ static int dvdcpxm_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
   int blocks_remaining = i_ret;
 
   /* Decrypt the blocks we managed to read */
-  for (auto buffer : buffers) {
+  for (auto buffer : buffers.entries()) {
     for (size_t offset = 0; offset < buffer.size() && blocks_remaining > 0;
          offset += DVDCSS_BLOCK_SIZE, --blocks_remaining) {
       auto sector = buffer.subspan(offset, DVDCSS_BLOCK_SIZE);
