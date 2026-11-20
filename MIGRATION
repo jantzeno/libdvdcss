@@ -1,0 +1,69 @@
+# Behavior migration from upstream-master to main
+
+Baseline: VideoLAN `upstream-master` at `811ce97` and fork `main` at
+`2dd36a3`. Both report libdvdcss 1.6.0. The local histories have no
+merge base, so this file compares the two source trees at those revisions.
+
+## Caller-visible differences
+
+| Area | upstream-master | main | Migration guidance |
+| --- | --- | --- | --- |
+| CPXM reads without a decryption context | `dvdcpxm_read` and `dvdcpxm_readv` return the successful raw read count even with `DVDCSS_READ_DECRYPT` when no context exists. | Both return `-1` after a successful underlying read when decryption was requested and the context is absent. The read can already have advanced the input. | For intentional raw reads, omit `DVDCSS_READ_DECRYPT`. For decrypted reads, initialize CPXM and check the initialization result first. |
+| Stream callback lifetime | The handle retains the caller's callback-table pointer and stream open requires a non-null opaque pointer. | The handle copies the table, requires seek and read callbacks, and accepts a null opaque pointer. | Supply the callbacks at open time. Later edits to the original table have no effect. Keep any callback-owned state alive until close. |
+| Scatter buffer layout | The API documents sector-sized entries. The read path does not perform the fork's per-entry validation. | Both CSS and CPXM reject entries whose lengths are not multiples of 2,048 before I/O, even if their combined length is aligned. A null base is accepted only for a zero-length entry. | Use whole sectors in each entry and pass the number of entries to `readv`. Stream callers need a `pf_readv` callback for vectored reads. |
+| Stream read results | The stream path converts the callback's byte count to blocks. | Counts greater than the request fail. For a partial sector, the fork seeks back to the last complete sector and returns the number of complete sectors if repositioning succeeds. | Return the actual number of bytes copied and make the seek callback support repositioning at sector boundaries. |
+| Verbosity | `DVDCSS_VERBOSE` uses `atoi`, which accepts leading whitespace and numeric prefixes. | The entire value must parse as an integer. Values such as ` 2` or `2debug` leave logging off. | Set `DVDCSS_VERBOSE` to `0`, `1`, or `2`. |
+
+## Build and packaging
+
+- Upstream builds with C17 and Meson 0.60 or newer. The fork requires Meson
+  1.3 or newer, a C++23 compiler and standard library, and a C11 compiler for
+  its C API test. Static consumers must account for the C++ runtime when
+  linking from C.
+- The fork accepts Linux, Windows, and macOS on x86-64 and AArch64. It rejects
+  32-bit targets and other operating systems, including Haiku. Upstream's
+  Haiku cache and device support therefore has no counterpart on the fork.
+- The public headers remain C-compatible, the pkg-config name is `libdvdcss`,
+  and the Linux shared-library SONAME stays `libdvdcss.so.2`. The fork's Linux
+  ABI test checks the 14 public CSS and CPXM symbols. Public block sizes and
+  flag values match the upstream baseline.
+- The fork builds its automated tests by default. Use
+  `-Denable_examples=true` to build `csstest` and, on Linux, `dvd_region`.
+
+## Tracking upstream updates
+
+Compare source trees with `git diff upstream-master main`. For each upstream
+behavior change, record the upstream commit, current fork behavior, and the
+test or source inspection that establishes parity. Update both baseline
+revisions when refreshing this file.
+
+### CPXM parity map
+
+The statuses below come from inspection of the two baseline source trees.
+They describe current behavior, including where the fork reached a similar
+result with a different implementation.
+
+| Upstream change | Status on main | Evidence and follow-up |
+| --- | --- | --- |
+| `811ce97` reads CPXM discs without a decryption context | Different | Both fork read APIs return an error after reading. Decide on raw fallback versus explicit failure. If keeping explicit failure, check the context before reading and test the return value and position for both APIs. |
+| `527d1dc` corrects CPRM title-key decryption argument order | Missing | In `dvdcpxm_init_impl`, the fork still passes the media-derived key as the data argument and the encrypted title key as the key argument. Bring over the corrected order and verify title-key derivation with a known-answer fixture. |
+| `8049671`, `b5fd3e2`, `9209e89` fix CPRM Media Key Block pack counts and failures | Partial | `cprm_get_mkb` validates the first count and aborts on read failure. The fork still lets later responses change the loop bound after allocation. Upstream freezes the first count. Use the first count for allocation and iteration, and verify that later count changes cannot alter the buffer bounds. |
+| `450a293`, `8b44627` fix macOS CPRM ioctls | Missing | Both Darwin branches in `src/ioctl.cpp` still pass an uninitialized descriptor. The media ID path copies from the response header, and the MKB path omits the requested pack address and returned pack count. Defer runtime parity until a macOS contributor can verify both ioctl paths with CPRM media. |
+| `d8c1329`, `19e66a6` initialize and publish the media type | Partial | The fork's value-initialized handle starts with media type zero. `dvdcss_test` still assigns the type before checking whether the copyright ioctl populated it or applying the Windows fallback. Move publication after the error handling and test both ioctl success and failure. |
+| `f0a2919`, `63aa58e`, `8f91024`, `0a92d75` handle CPXM setup failures | Similar guards, different results | The fork stops on media-ID, album-ID, and media-key failures and clears failed context. With non-null initialization input, upstream can return the detected media type after setup fails. The fork returns `-1`. Upstream frees the CPPM input buffer. The fork copies it and leaves ownership with the caller. Check integration code for both return-value and ownership assumptions. |
+| `403b51e`, `dfac5f3`, `dc468e8` repair CPXM cache lookup and lifetime | Different cache semantics | The fork checks `fstat` and uses a mutex and a device/inode key. A cache hit copies the context without extending the cache entry's lifetime. Upstream uses a device-only key and refcounts the shared context. A later lookup on the fork can miss after the last publishing handle closes, even if a handle with a copy remains open. |
+| `4908732`, `4c4ba8f`, `f8ca98d` bound MKB parsing and CPPM copy-control updates | Comparable internal safeguards | `process_mkb` checks record ranges within its span. `mpeg2_reset_cci` checks packet and payload sizes within the current block and uses the same zero copy-control byte. The public initialization API takes a pointer without a length, so the fork's CPPM input scan still cannot check the caller's actual allocation size. |
+| `f73dc86`, `7c6bdc0`, `ea7166f`, `91de084` update Haiku support | Outside the fork's platform scope | The fork's Meson target check rejects Haiku. |
+
+## Changes after the baseline
+
+| Fork commit | Change | Linux verification |
+| --- | --- | --- |
+| `8fb8d18` | Use the first CPRM pack count for both allocation and iteration. | A temporary ioctl fixture returned a smaller count after the first response and confirmed all originally requested packs were read. |
+| `a34974d` | Publish the media type after the copyright ioctl or Windows fallback determines it. | A temporary ioctl fixture covered Linux success and failure. |
+| `66e96c8` | Decrypt the CPRM title key using the media unique key. | The Linux build evaluated the compile-time known-answer assertion. |
+| `678c113` | Reject nonempty CPXM requests for uninitialized decryption before reading. Explicit raw reads still work. | The `stream-api` regression verifies both read APIs and their effect on stream position. The C API smoke and export tests also passed. |
+
+The public CPXM initialization return values and input ownership still differ
+as described in the parity map. The macOS CPRM ioctl port is deferred. Native
+Windows behavior and physical-disc behavior remain unverified.
