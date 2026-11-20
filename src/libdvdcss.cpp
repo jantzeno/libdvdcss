@@ -98,7 +98,6 @@
 #include "libdvdcpxm.h"
 
 #include <cerrno>
-#include <charconv>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -216,13 +215,7 @@ static void set_verbosity(dvdcss_t dvdcss) {
   dvdcss->b_errors = 0;
 
   if (psz_verbose != nullptr) {
-    int verbosity = 0;
-    const std::string_view text{psz_verbose};
-    const auto result =
-        std::from_chars(text.data(), text.data() + text.size(), verbosity);
-    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) {
-      return;
-    }
+    const long verbosity = std::strtol(psz_verbose, nullptr, 10);
 
     if (verbosity >= 2)
       dvdcss->b_debug = 1;
