@@ -84,6 +84,7 @@ extern "C" {
 #endif
 
 LIBDVDCSS_EXPORT dvdcss_t dvdcss_open(const char *psz_target);
+/* The callback table must remain valid until the stream handle is closed. */
 LIBDVDCSS_EXPORT dvdcss_t dvdcss_open_stream(void *p_stream,
                                              dvdcss_stream_cb *p_stream_cb);
 LIBDVDCSS_EXPORT int dvdcss_close(dvdcss_t);

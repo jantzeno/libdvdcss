@@ -116,13 +116,23 @@ int main() {
     return 1;
   }
 
-  callbacks = {};
-
   if (dvdcss_seek(handle, 2, DVDCSS_NOFLAGS) != 2) {
     return 2;
   }
 
   std::array<std::uint8_t, DVDCSS_BLOCK_SIZE> sector{};
+  callbacks.pf_read = [](void *, void *, int) { return -1; };
+  if (dvdcss_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != -1) {
+    return 22;
+  }
+  callbacks.pf_read = nullptr;
+  if (dvdcss_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != -1) {
+    return 23;
+  }
+  callbacks.pf_read = read_callback;
+  if (dvdcss_seek(handle, 2, DVDCSS_NOFLAGS) != 2) {
+    return 24;
+  }
   if (dvdcss_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != 1) {
     return 3;
   }

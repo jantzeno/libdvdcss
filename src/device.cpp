@@ -503,7 +503,7 @@ static int libc_seek(dvdcss_t dvdcss, int i_blocks) {
 static int stream_seek(dvdcss_t dvdcss, int i_blocks) {
   const uint64_t i_seek = static_cast<uint64_t>(i_blocks) * DVDCSS_BLOCK_SIZE;
 
-  if (!dvdcss->stream_cb.pf_seek)
+  if (!dvdcss->stream_cb->pf_seek)
     return -1;
 
   if (dvdcss->i_pos == i_blocks) {
@@ -511,7 +511,7 @@ static int stream_seek(dvdcss_t dvdcss, int i_blocks) {
     return i_blocks;
   }
 
-  if (dvdcss->stream_cb.pf_seek(dvdcss->p_stream, i_seek) != 0) {
+  if (dvdcss->stream_cb->pf_seek(dvdcss->p_stream, i_seek) != 0) {
     print_error(dvdcss, "seek error");
     dvdcss->i_pos = -1;
     return -1;
@@ -592,11 +592,11 @@ static int stream_read(dvdcss_t dvdcss, void *p_buffer, int i_blocks) {
   const int original_position = dvdcss->i_pos;
   const int requested_bytes = i_blocks * DVDCSS_BLOCK_SIZE;
 
-  if (!dvdcss->stream_cb.pf_read)
+  if (!dvdcss->stream_cb->pf_read)
     return -1;
 
   const int bytes_read =
-      dvdcss->stream_cb.pf_read(dvdcss->p_stream, p_buffer, requested_bytes);
+      dvdcss->stream_cb->pf_read(dvdcss->p_stream, p_buffer, requested_bytes);
 
   if (bytes_read < 0) {
     print_error(dvdcss, "read error");
@@ -734,7 +734,7 @@ static int libc_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
  * stream_readv: vectored read
  *****************************************************************************/
 static int stream_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
-  if (!dvdcss->stream_cb.pf_readv)
+  if (!dvdcss->stream_cb->pf_readv)
     return -1;
 
   const auto requested_size = buffers.byte_size();
@@ -746,7 +746,7 @@ static int stream_readv(dvdcss_t dvdcss, ScatterBuffers buffers) {
   }
 
   const int original_position = dvdcss->i_pos;
-  const int i_read = dvdcss->stream_cb.pf_readv(
+  const int i_read = dvdcss->stream_cb->pf_readv(
       dvdcss->p_stream, buffers.raw_data(), static_cast<int>(buffers.size()));
 
   if (i_read < 0 || static_cast<std::size_t>(i_read) > *requested_size) {

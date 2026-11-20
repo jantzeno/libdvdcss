@@ -131,7 +131,7 @@ struct dvdcss_s {
 #endif /* _WIN32 */
 
   void *p_stream;
-  dvdcss_stream_cb stream_cb{};
+  const dvdcss_stream_cb *stream_cb = nullptr;
   bool uses_stream = false;
 
   int cleanup_result = 0;

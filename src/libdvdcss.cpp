@@ -518,8 +518,7 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   dvdcss->device_strategy = {};
 
   dvdcss->p_stream = p_stream;
-  dvdcss->stream_cb =
-      p_stream_cb != nullptr ? *p_stream_cb : dvdcss_stream_cb{};
+  dvdcss->stream_cb = p_stream_cb;
   dvdcss->uses_stream = p_stream_cb != nullptr;
 
   dvdcss->cpxm = nullptr;
