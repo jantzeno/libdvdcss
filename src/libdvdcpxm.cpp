@@ -87,16 +87,18 @@ get_cpxm_cache_key(dvdcss_t dvdcss) noexcept {
                         static_cast<std::uintmax_t>(file_stat.st_ino)};
 }
 
-[[nodiscard]] static std::optional<cpxm_s>
-find_cached_cpxm(const cpxm_cache_key &key) {
+[[nodiscard]] static std::unique_ptr<cpxm_s>
+retain_cached_cpxm(const cpxm_cache_key &key) {
   const std::scoped_lock lock{g_cpxm_cache_mutex};
-  for (const auto &cache_entry : g_cpxm_cache) {
+  for (auto &cache_entry : g_cpxm_cache) {
     if (cache_entry.key == key) {
-      return cache_entry.cpxm;
+      auto context = std::make_unique<cpxm_s>(cache_entry.cpxm);
+      ++cache_entry.owners;
+      return context;
     }
   }
 
-  return std::nullopt;
+  return nullptr;
 }
 
 static void cache_cpxm(cpxm_cache_entry entry) {
@@ -583,10 +585,10 @@ int dvdcpxm_init_impl(dvdcss_t dvdcss, uint8_t *p_input) {
     if (!cache_key) {
       return -1;
     }
-    if (const auto cached_cpxm = find_cached_cpxm(*cache_key)) {
-      dvdcss->cpxm = std::make_unique<cpxm_s>(*cached_cpxm);
+    if (auto cached_cpxm = retain_cached_cpxm(*cache_key)) {
+      dvdcss->cpxm = std::move(cached_cpxm);
       dvdcss->cpxm_cache_key = cache_key;
-      dvdcss->owns_cpxm_cache_entry = false;
+      dvdcss->owns_cpxm_cache_entry = true;
       return dvdcss->media_type;
     }
     return -1;
