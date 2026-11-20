@@ -5,9 +5,7 @@
 #include <string.h>
 
 int main(void) {
-  dvdcss_stream_cb callbacks = {0};
-
-  if (dvdcss_open_stream((void *)1, &callbacks) != NULL)
+  if (dvdcss_open_stream((void *)1, NULL) != NULL)
     return 1;
 
   if (dvdcss_error(NULL) == NULL ||

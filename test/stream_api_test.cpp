@@ -23,15 +23,8 @@ struct TestIovec {
   std::size_t length;
 };
 
-FakeStream *null_opaque_stream = nullptr;
-
-FakeStream &resolve_stream(void *opaque) {
-  return opaque != nullptr ? *static_cast<FakeStream *>(opaque)
-                           : *null_opaque_stream;
-}
-
 int seek_callback(void *opaque, std::uint64_t position) {
-  auto &stream = resolve_stream(opaque);
+  auto &stream = *static_cast<FakeStream *>(opaque);
   if (position > stream.bytes.size()) {
     return -1;
   }
@@ -40,7 +33,7 @@ int seek_callback(void *opaque, std::uint64_t position) {
 }
 
 int read_callback(void *opaque, void *buffer, int byte_count) {
-  auto &stream = resolve_stream(opaque);
+  auto &stream = *static_cast<FakeStream *>(opaque);
   if (byte_count < 0 || (byte_count > 0 && buffer == nullptr)) {
     return -1;
   }
@@ -65,7 +58,7 @@ int readv_callback(void *opaque, const void *raw_iovecs, int count) {
     return -1;
   }
 
-  auto &stream = resolve_stream(opaque);
+  auto &stream = *static_cast<FakeStream *>(opaque);
   const auto *iovecs = static_cast<const TestIovec *>(raw_iovecs);
   int total = 0;
   int remaining = stream.readv_limit;
@@ -109,18 +102,30 @@ int main() {
       .pf_read = read_callback,
       .pf_readv = readv_callback,
   };
-
-  null_opaque_stream = &stream;
-  dvdcss_t handle = dvdcss_open_stream(nullptr, &callbacks);
+  if (dvdcss_open_stream(nullptr, &callbacks) != nullptr) {
+    return 26;
+  }
+  callbacks = {};
+  dvdcss_t handle = dvdcss_open_stream(&stream, &callbacks);
   if (handle == nullptr) {
     return 1;
   }
+
+  std::array<std::uint8_t, DVDCSS_BLOCK_SIZE> sector{};
+  if (dvdcss_seek(handle, 2, DVDCSS_NOFLAGS) != -1 ||
+      dvdcss_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != -1) {
+    return 25;
+  }
+  callbacks = {
+      .pf_seek = seek_callback,
+      .pf_read = read_callback,
+      .pf_readv = readv_callback,
+  };
 
   if (dvdcss_seek(handle, 2, DVDCSS_NOFLAGS) != 2) {
     return 2;
   }
 
-  std::array<std::uint8_t, DVDCSS_BLOCK_SIZE> sector{};
   callbacks.pf_read = [](void *, void *, int) { return -1; };
   if (dvdcss_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != -1) {
     return 22;

@@ -475,8 +475,7 @@ extern "C" dvdcss_t dvdcss_open(const char *psz_target) {
  */
 extern "C" dvdcss_t dvdcss_open_stream(void *p_stream,
                                        dvdcss_stream_cb *p_stream_cb) {
-  if (p_stream_cb == nullptr || p_stream_cb->pf_seek == nullptr ||
-      p_stream_cb->pf_read == nullptr) {
+  if (p_stream == nullptr || p_stream_cb == nullptr) {
     return nullptr;
   }
 
@@ -496,10 +495,6 @@ static dvdcss_t dvdcss_open_common(const char *psz_target, void *p_stream,
   /* Allocate the library structure. */
   auto dvdcss_state = std::make_unique<dvdcss_s>();
   dvdcss_t dvdcss = dvdcss_state.get();
-  if (p_stream_cb != nullptr &&
-      (p_stream_cb->pf_seek == nullptr || p_stream_cb->pf_read == nullptr)) {
-    goto error;
-  }
 
   /* Initialize structure with default values. */
   dvdcss->i_fd.reset();
