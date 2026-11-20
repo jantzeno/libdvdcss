@@ -331,6 +331,15 @@ constexpr uint64_t c2_g(uint64_t code, uint64_t key) noexcept {
   return c2_enc(code, key) ^ code;
 }
 
+static constexpr uint64_t cprm_decrypt_title_key(
+    uint64_t encrypted_title_key, uint64_t media_unique_key) noexcept {
+  return c2_dec(encrypted_title_key, media_unique_key) & 0x00ffffffffffffff;
+}
+
+static_assert(cprm_decrypt_title_key(0xd6d6a1cbd23b8e7eULL,
+                                     0x006d05086b755c81ULL) ==
+              0x0011223344556677ULL);
+
 static constexpr bool matches_c2_vector(uint64_t code, uint64_t key,
                                         uint64_t encrypted,
                                         uint64_t g_value) noexcept {
@@ -617,7 +626,7 @@ int dvdcpxm_init_impl(dvdcss_t dvdcss, uint8_t *p_input) {
     const uint64_t k_mu =
         c2_g(cpxm.media_key, cpxm.id_media) & 0x00ffffffffffffff;
     const uint64_t k_te = read64_be(p_input);
-    cpxm.vr_k_t = c2_dec(k_mu, k_te) & 0x00ffffffffffffff;
+    cpxm.vr_k_t = cprm_decrypt_title_key(k_te, k_mu);
     ret = 0;
     break;
   }
