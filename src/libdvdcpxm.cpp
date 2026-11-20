@@ -33,6 +33,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <cstdio>

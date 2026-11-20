@@ -212,8 +212,6 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   int i;
 #elif defined(DARWIN_DVD_IOCTL)
   io_object_t next_media;
-  mach_port_t master_port;
-  kern_return_t kern_result;
   io_iterator_t media_iterator;
   CFMutableDictionaryRef classes_to_match;
 #else
@@ -257,11 +255,6 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   }
 #elif defined(DARWIN_DVD_IOCTL)
 
-  kern_result = IOMasterPort(MACH_PORT_NULL, &master_port);
-  if (kern_result != KERN_SUCCESS) {
-    return;
-  }
-
   classes_to_match = IOServiceMatching(kIODVDMediaClass);
   if (classes_to_match == NULL) {
     return;
@@ -270,8 +263,8 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
   CFDictionarySetValue(classes_to_match, CFSTR(kIOMediaEjectableKey),
                        kCFBooleanTrue);
 
-  kern_result = IOServiceGetMatchingServices(master_port, classes_to_match,
-                                             &media_iterator);
+  const auto kern_result = IOServiceGetMatchingServices(
+      MACH_PORT_NULL, classes_to_match, &media_iterator);
   if (kern_result != KERN_SUCCESS) {
     return;
   }
@@ -297,8 +290,9 @@ void dvdcss_check_device(dvdcss_t dvdcss) {
     snprintf(psz_buf, sizeof(psz_buf), "%s%c", _PATH_DEV, 'r');
     i_pathlen = strlen(psz_buf);
 
-    if (CFStringGetCString(psz_path, psz_buf + i_pathlen,
-                           sizeof(psz_buf) - i_pathlen,
+    if (CFGetTypeID(psz_path) == CFStringGetTypeID() &&
+        CFStringGetCString(static_cast<CFStringRef>(psz_path),
+                           psz_buf + i_pathlen, sizeof(psz_buf) - i_pathlen,
                            kCFStringEncodingASCII)) {
       print_debug(dvdcss, "defaulting to drive `%s'", psz_buf);
       CFRelease(psz_path);
