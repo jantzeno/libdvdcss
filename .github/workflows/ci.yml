@@ -15,8 +15,8 @@ jobs:
         os: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - name: Install Meson and Ninja
@@ -34,7 +34,7 @@ jobs:
       CC: clang-19
       CXX: clang++-19
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y clang-19 meson ninja-build
       - name: Configure
@@ -50,7 +50,7 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y clang-19 libclang-rt-19-dev meson ninja-build
       - name: Configure
@@ -63,7 +63,7 @@ jobs:
   mingw:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: >-
           sudo apt-get update &&
