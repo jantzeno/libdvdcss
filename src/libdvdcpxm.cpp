@@ -573,6 +573,9 @@ int process_mkb(std::span<const uint8_t> mkb,
 /* Function should be called on a dvdcss var to set cppm struct which needs
  * to persist in order to decrypt the media */
 int dvdcpxm_init_impl(dvdcss_t dvdcss, uint8_t *p_input) {
+  std::unique_ptr<uint8_t, decltype(&std::free)> cppm_input{
+      dvdcss->media_type == COPYRIGHT_PROTECTION_CPPM ? p_input : nullptr,
+      &std::free};
   if (dvdcss->cpxm) {
     return dvdcss->media_type;
   }
@@ -608,7 +611,7 @@ int dvdcpxm_init_impl(dvdcss_t dvdcss, uint8_t *p_input) {
     break;
   case COPYRIGHT_PROTECTION_CPPM:
     /* the input is the media key block */
-    cppm_mkb = copy_cppm_mkb(p_input);
+    cppm_mkb = copy_cppm_mkb(cppm_input.get());
     if (cppm_mkb.empty() || cppm_set_id_album(dvdcss) != 0) {
       break;
     }
@@ -638,7 +641,7 @@ int dvdcpxm_init_impl(dvdcss_t dvdcss, uint8_t *p_input) {
 
   if (ret != 0) {
     dvdcss->cpxm.reset();
-    return -1;
+    return dvdcss->media_type;
   }
 
   /* Cache only descriptors with a stable POSIX device/inode identity. */

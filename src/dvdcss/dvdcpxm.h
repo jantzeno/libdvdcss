@@ -72,7 +72,8 @@ extern "C" {
  * after dvdcss_open */
 /* in the case of DVD-Audio, the MKB must be given as input,
  * in the case of DVD-VR, the title key should be given as input.
- * The caller retains ownership of p_input. */
+ * The library frees a non-null CPPM media key block. The caller retains
+ * ownership of a CPRM title key. */
 LIBDVDCSS_EXPORT int dvdcpxm_init(dvdcss_t dvdcss, uint8_t *p_input);
 
 /* Same as dvdcss_close but frees the cpxm struct as well */
