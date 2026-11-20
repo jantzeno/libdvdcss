@@ -220,17 +220,17 @@ int main() {
     return 19;
   }
   const auto uninitialized_position = stream.position;
+  const auto raw_begin = stream.bytes.begin() + uninitialized_position;
   const auto iovec_count = static_cast<int>(iovecs.size());
-  if (dvdcpxm_read(handle, sector.data(), 1, DVDCSS_READ_DECRYPT) != -1 ||
-      stream.position != uninitialized_position ||
-      dvdcpxm_readv(handle, iovecs.data(), iovec_count, DVDCSS_READ_DECRYPT) != -1 ||
-      stream.position != uninitialized_position) {
+  if (dvdcpxm_read(handle, sector.data(), 1, DVDCSS_READ_DECRYPT) != 1 ||
+      dvdcpxm_readv(handle, iovecs.data(), iovec_count, DVDCSS_READ_DECRYPT) != 2 ||
+      stream.position != uninitialized_position + 3 * DVDCSS_BLOCK_SIZE ||
+      !std::equal(sector.begin(), sector.end(), raw_begin) ||
+      !std::equal(first.begin(), first.end(),
+                  raw_begin + DVDCSS_BLOCK_SIZE) ||
+      !std::equal(second.begin(), second.end(),
+                  raw_begin + 2 * DVDCSS_BLOCK_SIZE)) {
     return 20;
-  }
-  if (dvdcpxm_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != 1 ||
-      dvdcpxm_readv(handle, iovecs.data(), iovec_count, DVDCSS_NOFLAGS) != 2 ||
-      stream.position != uninitialized_position + 3 * DVDCSS_BLOCK_SIZE) {
-    return 21;
   }
 
   std::uint8_t unprotected_media_marker = 0;
