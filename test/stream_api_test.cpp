@@ -206,6 +206,23 @@ int main() {
   }
   stream.overreport_read = false;
 
+  if (dvdcpxm_seek(handle, 12, DVDCSS_NOFLAGS) != 12) {
+    return 19;
+  }
+  const auto uninitialized_position = stream.position;
+  const auto iovec_count = static_cast<int>(iovecs.size());
+  if (dvdcpxm_read(handle, sector.data(), 1, DVDCSS_READ_DECRYPT) != -1 ||
+      stream.position != uninitialized_position ||
+      dvdcpxm_readv(handle, iovecs.data(), iovec_count, DVDCSS_READ_DECRYPT) != -1 ||
+      stream.position != uninitialized_position) {
+    return 20;
+  }
+  if (dvdcpxm_read(handle, sector.data(), 1, DVDCSS_NOFLAGS) != 1 ||
+      dvdcpxm_readv(handle, iovecs.data(), iovec_count, DVDCSS_NOFLAGS) != 2 ||
+      stream.position != uninitialized_position + 3 * DVDCSS_BLOCK_SIZE) {
+    return 21;
+  }
+
   std::uint8_t unprotected_media_marker = 0;
   if (dvdcpxm_init(handle, &unprotected_media_marker) != DVDCPXM_MEDIA_UNPR ||
       dvdcpxm_init(handle, &unprotected_media_marker) != DVDCPXM_MEDIA_UNPR) {

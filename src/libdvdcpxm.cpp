@@ -909,6 +909,11 @@ static int dvdcpxm_read_impl(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
     return -1;
   }
 
+  if (i_blocks > 0 && (i_flags & DVDCSS_READ_DECRYPT) && !dvdcss->cpxm) {
+    print_error(dvdcss, "CPXM decryption is not initialized");
+    return -1;
+  }
+
   uint8_t *_p_buffer = static_cast<uint8_t *>(p_buffer);
   int i_ret, i_index;
 
@@ -916,11 +921,6 @@ static int dvdcpxm_read_impl(dvdcss_t dvdcss, void *p_buffer, int i_blocks,
 
   if (i_ret <= 0 || !(i_flags & DVDCSS_READ_DECRYPT)) {
     return i_ret;
-  }
-
-  if (!dvdcss->cpxm) {
-    print_error(dvdcss, "CPXM decryption is not initialized");
-    return -1;
   }
 
   /* Decrypt the blocks we managed to read */
@@ -963,17 +963,17 @@ static int dvdcpxm_readv_impl(dvdcss_t dvdcss, void *p_iovec, int i_blocks,
     print_error(dvdcss, "invalid scatter buffer layout");
     return -1;
   }
+  if (*byte_size > 0 && (i_flags & DVDCSS_READ_DECRYPT) && !dvdcss->cpxm) {
+    print_error(dvdcss, "CPXM decryption is not initialized");
+    return -1;
+  }
+
   int i_ret;
 
   i_ret = dvdcss->device_strategy.readv(dvdcss, buffers);
 
   if (i_ret <= 0 || !(i_flags & DVDCSS_READ_DECRYPT)) {
     return i_ret;
-  }
-
-  if (!dvdcss->cpxm) {
-    print_error(dvdcss, "CPXM decryption is not initialized");
-    return -1;
   }
 
   int blocks_remaining = i_ret;
