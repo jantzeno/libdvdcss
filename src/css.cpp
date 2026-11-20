@@ -130,9 +130,6 @@ int dvdcss_test(dvdcss_t dvdcss) {
 
   i_ret = ioctl_ReadCopyright(dvdcss->i_fd, 0 /* i_layer */, &i_copyright);
 
-  /* value may be used in cpxm decryption */
-  dvdcss->media_type = i_copyright;
-
   if (i_ret < 0) {
 #ifdef _WIN32
     /* Maybe we didn't have enough privileges to read the copyright
@@ -153,6 +150,9 @@ int dvdcss_test(dvdcss_t dvdcss) {
     return -1;
 #endif /* _WIN32 */
   }
+
+  /* value may be used in cpxm decryption */
+  dvdcss->media_type = i_copyright;
 
   print_debug(dvdcss, "disc reports copyright information 0x%x", i_copyright);
 
