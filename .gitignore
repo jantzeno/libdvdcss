@@ -38,3 +38,5 @@
 /releases*
 /tarballs*
 /*.yml
+
+/.cache/
